@@ -51,7 +51,7 @@ If several functions are used as handlers for the same event:
 
 The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_hooks().
 
-You can also capture sys.exit() and manual raise of SystemExit:
+You can also react to sys.exit() and manual raise of SystemExit:
 
 ::
 
@@ -77,27 +77,34 @@ Or as a context manager:
         do_stuff()
 
 
+All decorators are stackable. If you use other decorators than the ones from postcriptum, put postcriptum decorators at the top:
+
+@watch.on_stuff()
+@other_decorator()
+def handler(context):
+    pass
+
 The context is a dictionary that can contain:
 
-    For on_crash handlers:
+For on_crash handlers:
 
-        - **exception_type**: the class of the exception that lead to the crash
-        - **exception_value**: the value of the exception that lead to the crash
-        - **exception_traceback**: the traceback at the moment of the crash
-        - **previous_exception_hook**: the callable that was the exception hook before we called setup()
+    - **exception_type**: the class of the exception that lead to the crash
+    - **exception_value**: the value of the exception that lead to the crash
+    - **exception_traceback**: the traceback at the moment of the crash
+    - **previous_exception_hook**: the callable that was the exception hook before we called setup()
 
-    For on_terminate handlers:
+For on_terminate handlers:
 
-        - **signal**: the number representing the signal that was sent to terminate the program
-        - **signal_frame**: the frame state at the moment the signal arrived
-        - **previous_signal_hook**: the signal handler that was set before we called setup()
-        - **recommended_exit_code**: the polite exit code to use when exiting after this signal
+    - **signal**: the number representing the signal that was sent to terminate the program
+    - **signal_frame**: the frame state at the moment the signal arrived
+    - **previous_signal_hook**: the signal handler that was set before we called setup()
+    - **recommended_exit_code**: the polite exit code to use when exiting after this signal
 
-    For on_quit_handlers:
+For on_quit_handlers:
 
-        - **exit_code**: the code passed to SystemExit/sys.exit.
+    - **exit_code**: the code passed to SystemExit/sys.exit.
 
-    on_finish handlers context is empty.
+on_finish handlers context is empty.
 
 Currently, postscriptum does not provide a hook for
 

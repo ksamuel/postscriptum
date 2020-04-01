@@ -46,7 +46,7 @@ If several functions are used as handlers for the same event:
 
 The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_hooks().
 
-You can also capture sys.exit() and manual raise of SystemExit:
+You can also react to sys.exit() and manual raise of SystemExit:
 
 ::
 
@@ -70,6 +70,13 @@ Or as a context manager:
 
     with watch: # NO parenthesis !
         do_stuff()
+
+All decorators are stackable. If you use other decorators than the ones from postcriptum, put postcriptum decorators at the top:
+
+@watch.on_stuff()
+@other_decorator()
+def handler(context):
+    pass
 
 The context is a dictionary that can contain:
 
