@@ -1,16 +1,16 @@
-Goodbye: an intuitive and unified API to run code when Python exit
-===================================================================
+Postscriptum: an intuitive and unified API to run code when Python exit
+========================================================================
 
 .. warning::
     While the code is considered functional and I used it in my projects,
     the API is not complete and may change until we reach 1.0.
 
-Goodbye wraps atexit.register, sys.excepthook and signal.signal to lets you do:
+Postscriptum wraps atexit.register, sys.excepthook and signal.signal to lets you do:
 
 ::
 
-    import goodbye
-    watch = goodbye.setup() # do this before creating a thread or a process
+    import postscriptum
+    watch = postscriptum.setup() # do this before creating a thread or a process
 
     @watch.on_finish() # don't forget the parenthesis !
     def _(context):
@@ -49,7 +49,7 @@ If several functions are used as handlers for the same event:
     def _(context):
         print('two!')
 
-The two functions will be called. Hooks from code not using goodbye will be preserved by default for exceptions and atexit.  Hooks from code not using goodbye for signals are replaced. They can be restored using watch.restore_hooks().
+The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_hooks().
 
 You can also capture sys.exit() and manual raise of SystemExit:
 
@@ -99,7 +99,7 @@ The context is a dictionary that can contain:
 
     on_finish handlers context is empty.
 
-Currently, goodbye does not provide a hook for
+Currently, postscriptum does not provide a hook for
 
 - sys.unraisablehook
 - exception occuring in other threads (threading.excepthook from 3.8 will allow us to do that later)
@@ -117,11 +117,11 @@ Install
 
 It's on pypi::
 
-    pip install goodbye
+    pip install postscriptum
 
 
 
-*Gotchas (in case you wanted to know)
+Gotchas (in case you wanted to know)
 ---------------------------------------
 
 Python has 3 very different API to deal with exiting, and they all have their challenge.
@@ -130,4 +130,4 @@ Python has 3 very different API to deal with exiting, and they all have their ch
 - To you capture terminating signals, you need to know which ones (they differ depending of the OS), once you do the program will not exit unless you call sys.exit(). However, there is no automatic way to react to sys.exit(). And no way to distinguish SystemExit from sys.exit() and from a signal.
 - excepthook are calls on exceptions, but setting it leads to hard to debug errors, if you don't call the previous hook properly.
 
-Goodbye doesn't deal with the last goatchas yet: signals are caught by childs and passed to the main threads, but not exception.
+Postscriptum doesn't deal with the last goatchas yet: signals are caught by childs and passed to the main threads, but not exception.

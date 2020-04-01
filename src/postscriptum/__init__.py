@@ -1,11 +1,11 @@
-"""Goodbye: an intuitive and unified API to run code when Python exit
+"""Postscriptum: an intuitive and unified API to run code when Python exit
 
-Goodbye wraps atexit.register, sys.excepthook and signal.signal to lets you do:
+Postscriptum wraps atexit.register, sys.excepthook and signal.signal to lets you do:
 
 ::
 
-    import goodbye
-    watch = goodbye.setup() # do this before creating a thread or a process
+    import postscriptum
+    watch = postscriptum.setup() # do this before creating a thread or a process
 
     @watch.on_finish() # don't forget the parenthesis !
     def _(context):
@@ -44,7 +44,7 @@ If several functions are used as handlers for the same event:
     def _(context):
         print('two!')
 
-The two functions will be called. Hooks from code not using goodbye will be preserved by default for exceptions and atexit.  Hooks from code not using goodbye for signals are replaced. They can be restored using watch.restore_hooks().
+The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_hooks().
 
 You can also capture sys.exit() and manual raise of SystemExit:
 
@@ -94,7 +94,7 @@ The context is a dictionary that can contain:
     on_finish handlers context is empty.
 
 
-Currently, goodbye does not provide a hook for
+Currently, postscriptum does not provide a hook for
 
 - sys.unraisablehook
 - exception occuring in other threads (threading.excepthook from 3.8 will allow us to do that later)
