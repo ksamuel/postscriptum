@@ -71,12 +71,25 @@ Or as a context manager:
     with watch: # NO parenthesis !
         do_stuff()
 
+
 All decorators are stackable. If you use other decorators than the ones from postcriptum, put postcriptum decorators at the top:
 
-@watch.on_stuff()
+::
+
+@watch.on_quit()
 @other_decorator()
 def handler(context):
     pass
+
+Alternatively, you can add the handler imperatively:
+
+::
+
+@other_decorator()
+def handler(context):
+    pass
+
+watch.add_quit_handler(handler). All on_* method have their imperative equivalent.
 
 The context is a dictionary that can contain:
 
@@ -263,7 +276,7 @@ def restore_signal_hooks(hooks: Mapping[signal.Signals, Any] = None):
 
 class ExitWatcher:
     """
-        A registry containing/attaching hooks to the various exit scenario
+        A registry containing/attaching hooks to the various exit scenarios
 
     """
 
@@ -281,20 +294,23 @@ class ExitWatcher:
         self.call_previous_exception_hook = call_previous_exception_hook
         self.signals_to_catch = signals_to_catch
 
-        # called atexit, signal handler, systemexit and exceptook
+        # Always called
         self._finish_handlers = list(finish_handlers)
 
-        # Called on External signals and Ctrl + C
+        # Called on external signals and Ctrl + C
         self._terminate_handlers = list(terminate_handlers)
 
-        # Call on system except hooks
+        # Call when there is an unhandled exception
         self._crash_handlers = list(crash_handlers)
 
-        # Call on sys.exit and Ctrl + C
+        # Call on sys.exit and manual raise of SystemExit
         self._quit_handlers = list(quit_handlers)
 
+        # A set of already called handlers to avoid
+        # duplicate calls
         self._called_handlers: Set[Callable] = set()
-        self.context: dict = {}
+
+        # We use this to avoid registering hooks twice
         self._hooks_registered = False
 
     def _create_handler_decorator(self, func, handlers: list, name: str):
@@ -335,9 +351,6 @@ class ExitWatcher:
 
     def on_crash(self, func=None):
         return self._create_handler_decorator(func, self._crash_handlers, "on_crash")
-
-    # def on_traceback(self, func=None):
-    #     return self._register_handler(func, self._traceback_handlers, 'on_traceback')
 
     def register_hooks(self):
 

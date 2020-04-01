@@ -79,10 +79,22 @@ Or as a context manager:
 
 All decorators are stackable. If you use other decorators than the ones from postcriptum, put postcriptum decorators at the top:
 
-@watch.on_stuff()
+::
+
+@watch.on_quit()
 @other_decorator()
 def handler(context):
     pass
+
+Alternatively, you can add the handler imperatively:
+
+::
+
+@other_decorator()
+def handler(context):
+    pass
+
+watch.add_quit_handler(handler). All on_* method have their imperative equivalent.
 
 The context is a dictionary that can contain:
 
