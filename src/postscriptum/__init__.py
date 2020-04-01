@@ -1,6 +1,6 @@
 """Postscriptum: an intuitive and unified API to run code when Python exit
 
-Postscriptum wraps atexit.register, sys.excepthook and signal.signal to lets you do:
+Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and ``signal.signal`` to lets you do:
 
 ::
 
@@ -19,7 +19,7 @@ Postscriptum wraps atexit.register, sys.excepthook and signal.signal to lets you
     def _(context): # context contains the exception and traceback
         print("When there is an unhandled exception")
 
-All those functions will be called automatically at the proper moment. The handler for on_finish() will be called even if another handler has been called.
+All those functions will be called automatically at the proper moment. The handler for ``on_finish`` will be called even if another handler has been called.
 
 If the same function is used for several events:
 
@@ -46,7 +46,7 @@ If several functions are used as handlers for the same event:
 
 The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_hooks().
 
-You can also react to sys.exit() and manual raise of SystemExit:
+You can also react to ``sys.exit()`` and manual raise of ``SystemExit``:
 
 ::
 
@@ -76,48 +76,50 @@ All decorators are stackable. If you use other decorators than the ones from pos
 
 ::
 
-@watch.on_quit()
-@other_decorator()
-def handler(context):
-    pass
+    @watch.on_quit()
+    @other_decorator()
+    def handler(context):
+        pass
 
 Alternatively, you can add the handler imperatively:
 
 ::
 
-@other_decorator()
-def handler(context):
-    pass
+    @other_decorator()
+    def handler(context):
+        pass
 
-watch.add_quit_handler(handler). All on_* method have their imperative equivalent.
+``watch.add_quit_handler(handler)``. All ``on_*`` method have their imperative equivalent.
 
 The context is a dictionary that can contain:
 
-    For on_crash handlers:
+For ``on_crash`` handlers:
 
-        - **exception_type**: the class of the exception that lead to the crash
-        - **exception_value**: the value of the exception that lead to the crash
-        - **exception_traceback**: the traceback at the moment of the crash
-        - **previous_exception_hook**: the callable that was the exception hook before we called setup()
+- **exception_type**: the class of the exception that lead to the crash
+- **exception_value**: the value of the exception that lead to the crash
+- **exception_traceback**: the traceback at the moment of the crash
+- **previous_exception_hook**: the callable that was the exception hook before we called setup()
 
-    For on_terminate handlers:
+For ``on_terminate`` handlers:
 
-        - **signal**: the number representing the signal that was sent to terminate the program
-        - **signal_frame**: the frame state at the moment the signal arrived
-        - **previous_signal_hook**: the signal handler that was set before we called setup()
-        - **recommended_exit_code**: the polite exit code to use when exiting after this signal
+- **signal**: the number representing the signal that was sent to terminate the program
+- **signal_frame**: the frame state at the moment the signal arrived
+- **previous_signal_hook**: the signal handler that was set before we called setup()
+- **recommended_exit_code**: the polite exit code to use when exiting after this signal
 
-    For on_quit_handlers:
+For ``on_quit`` handlers:
 
-        - **exit_code**: the code passed to SystemExit/sys.exit.
+- **exit_code**: the code passed to ``SystemExit``/``sys.exit``.
 
-    on_finish handlers context is empty.
+For ``on_quit`` handlers:
+
+- The context is emtpy
 
 
 Currently, postscriptum does not provide a hook for
 
-- sys.unraisablehook
-- exception occuring in other threads (threading.excepthook from 3.8 will allow us to do that later)
+- ``sys.unraisablehook``
+- exception occuring in other threads (``threading.excepthook`` from 3.8 will allow us to do that later)
 - unhandled exception errors in unawaited asyncio (not sure we should do something though)
 
 .. warning::
