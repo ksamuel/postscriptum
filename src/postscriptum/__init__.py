@@ -111,10 +111,10 @@ For ``on_quit`` handlers:
 
 - **exit_code**: the code passed to ``SystemExit``/``sys.exit``.
 
-For ``on_quit`` handlers:
+For ``on_finish`` handlers:
 
-- The context is emtpy
-
+- The contex is empty if the program ends cleanly, otherwise,
+  it will contain the same entries as one of the contexts above.
 
 Currently, postscriptum does not provide a hook for
 
