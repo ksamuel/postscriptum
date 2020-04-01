@@ -4,3 +4,6 @@ __pycache__
 .vscode
 idée
 essais.py
+dist
+build
+*.egg*
