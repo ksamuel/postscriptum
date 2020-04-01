@@ -14,11 +14,11 @@ Postscriptum wraps atexit.register, sys.excepthook and signal.signal to lets you
 
     @watch.on_finish() # don't forget the parenthesis !
     def _(context):
-        print("When the program finish, no matter the reason.")
+        print("When the program finishes, no matter the reason.")
 
     @watch.on_terminate()
     def _(context):  # context contains the signal that lead to termination
-        print("When the user terminate the program. E.G: Ctrl + C, kill -9, etc.")
+        print("When the user terminates the program. E.G: Ctrl + C, kill -9, etc.")
 
     @watch.on_crash()
     def _(context): # context contains the exception and traceback
@@ -106,7 +106,7 @@ Currently, postscriptum does not provide a hook for
 - unhandled exception errors in unawaited asyncio (not sure we should do something though)
 
 .. warning::
-    You must be very careful about the code you put in handlers. If you mess in there,
+    You must be very careful about the code you put in handlers. If you mess up in there,
     it may give you no error message!
 
     Test your function without being a hook, then hook it up.
@@ -121,13 +121,18 @@ It's on pypi::
 
 
 
-Gotchas (in case you wanted to know)
----------------------------------------
+Why this lib ?
+----------------
 
-Python has 3 very different API to deal with exiting, and they all have their challenge.
+Python has 3 very different API to deal with exiting, and they all have their challenges:
 
-- atexit is always called, weither python exited cleanly or not, which can lead do duplicated calls. Except if you get a SIGTERM signal. And you don't have any information on the cause of the exit.
-- To you capture terminating signals, you need to know which ones (they differ depending of the OS), once you do the program will not exit unless you call sys.exit(). However, there is no automatic way to react to sys.exit(). And no way to distinguish SystemExit from sys.exit() and from a signal.
-- excepthook are calls on exceptions, but setting it leads to hard to debug errors, if you don't call the previous hook properly.
+- **atexit**: the handler is always called, weither python exited cleanly or not, which can lead do duplicated calls. Except if you get a SIGTERM signal when it's silently ignored. Even whell called, it doesn't give any information on the cause of the exit.
+- **signal**: to you capture terminating signals, you need to know which ones to watch for (and they differ depending of the OS). Normal behavior is to exit, but if you set your handler, the program will not exit unless you call sys.exit(). Finally, you can only have one handler for each signal.
+- **sys.excepthool** is called on all exception, but not SystemExit. It also leads to hard to debug errors if you don't call the previous hook properly. And you can have only one handler.
 
-Postscriptum doesn't deal with the last goatchas yet: signals are caught by childs and passed to the main threads, but not exception.
+Also, there is no automatic way to react to sys.exit(). And no way to distinguish SystemExit from sys.exit(), which you need for signals.
+
+Postscriptum doesn't deal with the last goatchas yet:
+
+- signals are caught by childs and passed to the main threads, but not exceptions.
+- messing up in your handler may cause you to have no error message at all.

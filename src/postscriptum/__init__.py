@@ -9,11 +9,11 @@ Postscriptum wraps atexit.register, sys.excepthook and signal.signal to lets you
 
     @watch.on_finish() # don't forget the parenthesis !
     def _(context):
-        print("When the program finish, no matter the reason.")
+        print("When the program finishes, no matter the reason.")
 
     @watch.on_terminate()
     def _(context):  # context contains the signal that lead to termination
-        print("When the user terminate the program. E.G: Ctrl + C, kill -9, etc.")
+        print("When the user terminates the program. E.G: Ctrl + C, kill -9, etc.")
 
     @watch.on_crash()
     def _(context): # context contains the exception and traceback
@@ -101,7 +101,7 @@ Currently, postscriptum does not provide a hook for
 - unhandled exception errors in unawaited asyncio (not sure we should do something though)
 
 .. warning::
-    You must be very careful about the code you put in handlers. If you mess in there,
+    You must be very careful about the code you put in handlers. If you mess up in there,
     it may give you no error message!
 
     Test your function without being a hook, then hook it up.
