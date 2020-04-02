@@ -63,7 +63,7 @@ BUT for this you MUST use the watcher as a decorator:
 
 ::
 
-    @watch() # parenthesis !
+    @watch()
     def main():
         do_stuff()
 
@@ -73,7 +73,7 @@ Or as a context manager:
 
 ::
 
-    with watch: # NO parenthesis !
+    with watch():
         do_stuff()
 
 

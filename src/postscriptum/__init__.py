@@ -58,7 +58,7 @@ BUT for this you MUST use the watcher as a decorator:
 
 ::
 
-    @watch() # parenthesis !
+    @watch()
     def main():
         do_stuff()
 
@@ -68,7 +68,7 @@ Or as a context manager:
 
 ::
 
-    with watch: # NO parenthesis !
+    with watch():
         do_stuff()
 
 
@@ -139,7 +139,7 @@ Currently, postscriptum does not provide a hook for
 # TODO: threading excepthook: threading.excepthook()
 # TODO: default for unhandled error in asyncio ?
 
-__version__ = "0.1"
+__version__ = "0.2"
 
 import sys
 import os
@@ -148,132 +148,22 @@ import atexit
 import signal
 
 from functools import wraps
+from contextlib import ContextDecorator
 
 from typing import *
-from types import FrameType
 
-PROCESS_ENDING_SIGNALS = (
-    "SIGABRT",
-    "SIGBREAK",
-    "SIGILL",
-    "SIGINT",
-    "SIGSEGV",
-    "SIGTERM",
+from postscriptum.register import (
+    PROCESS_ENDING_SIGNALS,
+    register_except_hook,
+    restore_except_hook,
+    register_signal_hook,
+    restore_signal_hooks,
 )
+from postscriptum.exceptions import ExitFromSignal
 
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
 # TODO: threading excepthook: threading.excepthook()
 # TODO: default for unhandled error in asyncio
-
-
-class ExitFromSignal(SystemExit):
-    """ SystemExit child we raise when we want to exit form signals
-
-        This is done to catch it specifically later and deal with this exit
-        as a special case.
-    """
-
-    pass
-
-
-def register_except_hook(hook: Callable, call_previous_hook: bool = True):
-    """ Set the callable to be used when an exception is not handled
-
-            You probably don't want to use that manually. We use it to
-            set the Watcher class hook.
-
-        hook: the callable to put into sys.excepthook
-        call_previous_hook: should we call the previous hook as well ? Keep
-        that to True unless you really know what you are doing.
-
-    """
-    previous_except_hook = sys.excepthook
-    register_except_hook.previous_except_hooks.append(  # type: ignore
-        previous_except_hook
-    )
-
-    def hook_wrapper(exception_type, exception_value, traceback):
-        if call_previous_hook:
-            previous_except_hook(exception_type, exception_value, traceback)
-        hook(exception_type, exception_value, traceback, previous_except_hook)
-
-    sys.excepthook = hook_wrapper
-    return previous_except_hook
-
-
-register_except_hook.previous_except_hooks = []  # type: ignore
-
-
-def restore_except_hook(hook: Callable = None):
-    """ Restore sys.excepthook to contain the previous hook
-
-        This is never called automatically but you migth want to call it
-        yourself if you need to remove the hooks from the watcher.
-
-        hook: the whole hook to put back. Default is to pop it from the
-        list register_except_hook.previous_except_hooks, which contains
-        a stack of all hooks replaced by register_except_hook.
-
-    """
-    replacing_hook = sys.excepthook
-    if not hook:
-        if not register_except_hook.previous_except_hooks:  # type: ignore
-            raise RuntimeError("No previous hook found to put back")
-        hook = register_except_hook.previous_except_hooks.pop()  # type: ignore
-    sys.excepthook = hook
-    return replacing_hook
-
-
-def register_signal_hook(
-    hook: Callable[[signal.Signals, FrameType, Optional[None]], bool],
-    signals: Iterable[str] = PROCESS_ENDING_SIGNALS,
-):
-    """ Register a callable to run for when a list of system signals is received
-
-        You probably don't want to use that manually. We use it to
-        set the Watcher class hooks.
-
-        hook: the callable to attach. If the callable return True, don't exit
-        no matter the signal.
-        signals: a list of signal names to attach to. Usually exit signals.
-    """
-    previous_hooks: dict = {}
-
-    @wraps(hook)
-    def hook_wrapper(code: signal.Signals, frame: FrameType) -> bool:
-        return hook(code, frame, previous_hooks.get(code, None))
-
-    for name in signals:
-        code = getattr(signal, name, None)  # handle different OSes
-        if code:
-            previous_hook = signal.getsignal(code)
-            previous_hooks[code] = previous_hook
-            signal.signal(code, hook_wrapper)
-    register_signal_hook.previous_except_hooks.append(previous_hooks)  # type: ignore
-
-
-register_signal_hook.previous_except_hooks = []  # type: ignore
-
-
-def restore_signal_hooks(hooks: Mapping[signal.Signals, Any] = None):
-    """ Set signals hooks to their previous values
-
-        This is never called automatically but you migth want to call it
-        yourself if you need to remove the hooks from the watcher.
-
-        hooks: a mapping with keys being the signals and values being the
-        handlers to set.
-
-    """
-    restore_hooks = {}
-    if register_signal_hook.previous_except_hooks:  # type: ignore
-        restore_hooks.update(
-            register_signal_hook.previous_except_hooks.pop()  # type: ignore
-        )
-    if hooks:
-        restore_hooks.update(hooks)
-    for code, hook in restore_hooks.items():
-        previous_hook = signal.signal(code, hook)
 
 
 class ExitWatcher:
@@ -426,6 +316,10 @@ class ExitWatcher:
         return exit
 
     def __call__(self, func=None):
+        """ Return an object that can be used to catch SystemExit
+
+            The object can be used both as a context manager and a decorator.
+        """
 
         if func is not None:
             raise ValueError(
@@ -434,68 +328,20 @@ class ExitWatcher:
                 "a variabled 'watch', do @watch() and not @watch."
             )
 
-        def decorator(func):
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                with self:
-                    return func(*args, **kwargs)
+        class Decorator(ContextDecorator):
+            def __enter__(s):
+                pass
 
-            return wrapper
+            def __exit__(s, exception_type, exception_value, traceback):
+                received_signal = isinstance(exception_value, ExitFromSignal)
+                received_quit = isinstance(exception_value, SystemExit)
+                if received_quit and not received_signal:
+                    return not self._call_quit_handlers(exception_value)
 
-        return decorator
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, exception_type, exception_value, traceback):
-        received_signal = isinstance(exception_value, ExitFromSignal)
-        received_quit = isinstance(exception_value, SystemExit)
-        if received_quit and not received_signal:
-            return not self._call_quit_handlers(exception_value)
+        return Decorator()
 
 
 def setup(*args, **kwargs):
     hook = ExitWatcher(*args, **kwargs)
     hook.register_hooks()
     return hook
-
-
-if __name__ == "__main__":
-
-    watch = setup()
-
-    @watch.on_quit()
-    def q(context):
-        print("Quit")
-        print(context)
-
-    @watch.on_finish()
-    def f(context):
-        print("Finish")
-        print(context)
-
-    @watch.on_terminate()
-    def t(context):
-        print("Terminate")
-        print(context)
-
-    @watch.on_crash()
-    def c(context):
-        print("Crash")
-        print(context)
-
-    @watch()
-    def main():
-        print(os.getpid())
-        name, *rest = sys.argv
-        if rest:
-            if rest[0] == "loop":
-                for x in range(1):
-                    print(".")
-                    time.sleep(1)
-                sys.exit(0)  # test quit
-            else:
-                1 / 0  # test crash
-
-    main()
-    # test finish
