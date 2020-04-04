@@ -1,4 +1,4 @@
-"""Low level tooling to register handlers for excepthook and signals
+"""Low level tooling to register handlers for excepthandler and signals
 """
 
 import sys
@@ -7,26 +7,32 @@ import signal
 from typing import *
 from typing import cast
 from types import TracebackType, FrameType
-from postscriptum.types import (
-    SignalType,
-    ExceptHookType,
-    SignalHandlerType,
-    PostScripumExceptHookType,
-)
 
 from functools import wraps
+
+from postscriptum.types import (
+    SignalType,
+    ExceptionHandlerType,
+    SignalHandlerType,
+    PostScripumExceptionHandlerType,
+)
+
+
+EXCEPTION_HANDLERS_HISTORY: List[ExceptionHandlerType] = []
+
+SIGNAL_HANDLERS_HISTORY: Dict[signal.Signals, List[SignalHandlerType]] = {}
 
 
 def signals_from_names(
     signal_names: Iterable[Union[str, signal.Signals]]
 ) -> Iterable[signal.Signals]:
-    """ Yields Signals Enum values matching names if they are available
+    """ Yield Signals Enum values matching names if they are available
 
     This functions allows to get the signal.Signals enum value for
     the given signal names, filtering the results to get only the ones that
     are available on the current OS.
 
-    This is used by register_signal_hook() and restore_signal_hook()
+    This is used by register_signals_handler() and restore_signal_handlers()
     to be able to pass a list of signals no matter the plateform.
 
     Passing a signal.Signals among the string is a noop, the value
@@ -59,95 +65,91 @@ def signals_from_names(
                 yield cast(signal.Signals, sig)
 
 
-EXCEPT_HOOKS_HISTORY: List[ExceptHookType] = []
-PREVIOUS_SIGNAL_HOOKS: Dict[signal.Signals, List[SignalHandlerType]] = {}
-
-
-def register_except_hook(
-    hook: PostScripumExceptHookType, call_previous_hook: bool = True
-) -> ExceptHookType:
+def register_exception_handler(
+    handler: PostScripumExceptionHandlerType, call_previous_handler: bool = True
+) -> ExceptionHandlerType:
     """ Set the callable to use when an exception is not handled
 
     The previous one is added in the PREVIOUS_EXCEPT_HOOKS stack.
 
     You probably don't want to use that manually. We use it to
-    set the Watcher class hook.
+    set the Watcher class handler.
 
-    Use restore_except_hook() to restore the excepthook to the previous
+    Use restore_exception_handler() to restore the exception handler to the previous
     one.
 
     Not thread safe. Do it before starting any thread, subprocess or event loop
 
     Args:
 
-        hook: the callable to put into sys.excepthook. It will we wrapped in
+        handler: the callable to put into sys.excepthook. It will we wrapped in
                 an adapter of type ExceptHookType
-        call_previous_hook: should the adapter call the previous hook before
+        call_previous_handler: should the adapter call the previous handler before
             yours ? Keep that to True unless you really know what you are doing.
 
     Example:
 
-        def hook(type_, value, traceback, previous_except_hook):
+        def handler(type_, value, traceback, previous_except_handler):
             print("I'll be called on an exception before it crashes the VM")
 
-        register_except_hook(hook)
+        register_exception_handler(handler)
 
     """
-    previous_except_hook = sys.excepthook
-    EXCEPT_HOOKS_HISTORY.append(previous_except_hook)
+    previous_except_handler = sys.excepthook
+    EXCEPTION_HANDLERS_HISTORY.append(previous_except_handler)
 
-    def hook_wrapper(
+    def handler_wrapper(
         type_: Type[BaseException], value: BaseException, traceback: TracebackType
     ):
-        f""" Adapter created by register_except_hook() to wrap {hook}()
-            This is done so {hook}() can accept a forth param, the
-            previous except hook, which is not passed other wise.
+        f""" Adapter created by register_exception_handler() to wrap {handler}()
+            This is done so {handler}() can accept a forth param, the
+            previous except handler, which is not passed other wise.
 
-            You can get a reference on the {hook}() function by accessing
-            hook_wrapper.__wrapped__
+            You can get a reference on the {handler}() function by accessing
+            handler_wrapper.__wrapped__
         """
-        if call_previous_hook:
-            previous_except_hook(type_, value, traceback)
-        return hook(type_, value, traceback, previous_except_hook)
+        if call_previous_handler:
+            previous_except_handler(type_, value, traceback)
+        return handler(type_, value, traceback, previous_except_handler)
 
-    hook_wrapper.__wrapped__ = hook  # type: ignore
+    handler_wrapper.__wrapped__ = handler  # type: ignore
 
-    sys.excepthook = hook_wrapper
-    return previous_except_hook
+    sys.excepthook = handler_wrapper
+    return previous_except_handler
 
 
-def restore_previous_except_hook():
-    """ Restore sys.excepthook to contain the previous hook
+def restore_previous_exception_handler():
+    """ Restore sys.excepthook to contain the previous handler
 
-    Get the hooks by poping PREVIOUS_EXCEPT_HOOKS.
+    Get the handlers by poping PREVIOUS_EXCEPT_HOOKS.
 
     Not thread safe. Do it after closing all threads, subprocesses
     or event loops
 
     Example:
 
-        restore_except_hook() # It's all automatic, nothing else to do
+        restore_exception_handler() # It's all automatic, nothing else to do
 
     """
-    replacing_hook = sys.excepthook
-    if not EXCEPT_HOOKS_HISTORY:
-        raise IndexError("No previous except hook found to restore")
-    hook = EXCEPT_HOOKS_HISTORY.pop()
-    sys.excepthook = hook
-    return replacing_hook
+    replacing_handler = sys.excepthook
+    if not EXCEPTION_HANDLERS_HISTORY:
+        raise IndexError("No previous except handler found to restore")
+    handler = EXCEPTION_HANDLERS_HISTORY.pop()
+    sys.excepthook = handler
+    return replacing_handler
 
 
-def register_signal_hook(
-    hook: Callable[[signal.Signals, FrameType, Optional[SignalHandlerType]], bool],
-    signals: Iterable[signal.Signals],
-):
+def register_signals_handler(
+    handler: Callable[[signal.Signals, FrameType, Optional[SignalHandlerType]], bool],
+    signals: Iterable[SignalType],
+) -> Mapping[signal.Signals, SignalHandlerType]:
     """ Register a callable to run for when a set of system signals is received
 
     Not thread safe. Do it before starting any thread, subprocess or event loop
 
     Args:
 
-        hook: the callable to attach. If the callable return True, don't exit
+        handler: the callable to attach. If the callable return True, don't exit
               no matter the signal. It will we wrapped in an adapter of
               type SignalHookType
         signals: a list of signal names to attach to.
@@ -156,35 +158,41 @@ def register_signal_hook(
 
     Example:
 
-        def hook1(sig, frame, previous_hook):
+        def handler1(sig, frame, previous_handler):
             print("I'll be called when the program receive a signal")
 
-        register_signal_hook(hook1)
+        register_signals_handler(handler1)
 
-        # This will replace the previous hook for SIGABRT:
+        # This will replace the previous handler for SIGABRT:
 
         from signals import Signals
 
-        def hook2(sig, frame, previous_hook):
+        def handler2(sig, frame, previous_handler):
             print("I'll be called when the code calls os.abort()")
             return True # keep running, don't exit
 
-        register_signal_hook(hook2, [Signals.SIGABRT])
+        register_signals_handler(handler2, [Signals.SIGABRT])
 
     """
 
-    @wraps(hook)
-    def hook_wrapper(sig: signal.Signals, frame: FrameType) -> bool:
-        return hook(sig, frame, PREVIOUS_SIGNAL_HOOKS[sig][-1])
+    @wraps(handler)
+    def handler_wrapper(sig: signal.Signals, frame: FrameType) -> bool:
+        return handler(sig, frame, SIGNAL_HANDLERS_HISTORY[sig][-1])
 
+    previous_handlers = {}
     for sig in signals_from_names(signals):
         previous_handler = signal.getsignal(sig)
-        PREVIOUS_SIGNAL_HOOKS.setdefault(sig, []).append(previous_handler)
-        signal.signal(sig, hook_wrapper)
+        SIGNAL_HANDLERS_HISTORY.setdefault(sig, []).append(previous_handler)
+        previous_handlers[sig] = previous_handler
+        signal.signal(sig, handler_wrapper)
+
+    return previous_handlers
 
 
-def restore_signal_hooks(signals: Iterable[signal.Signals]):
-    """ Set signals hooks to their previous values
+def restore_signals_handlers(
+    signals: Iterable[signal.Signals],
+) -> Mapping[signal.Signals, SignalHandlerType]:
+    """ Restore signals handlers to their previous values
 
     Args:
         signals: the names of the signal look for in PREVIOUS_SIGNAL_HOOKS
@@ -195,11 +203,18 @@ def restore_signal_hooks(signals: Iterable[signal.Signals]):
 
     Example:
 
-        restore_signal_hooks()
+        restore_signal_handlers()
 
     """
+    replacing_handlers = {}
     for sig in signals_from_names(signals):
-        previous_hooks = PREVIOUS_SIGNAL_HOOKS.get(sig, [])
-        if not previous_hooks:
-            raise IndexError(f"No previous hooks found for signal {signal} to restore")
-        signal.signal(sig, previous_hooks.pop())
+        previous_handlers = SIGNAL_HANDLERS_HISTORY.get(sig, [])
+        if not previous_handlers:
+            raise IndexError(
+                f"No previous handlers found for signal {signal} to restore"
+            )
+
+        replacing_handlers[sig] = previous_handlers.pop()
+        signal.signal(sig, replacing_handlers[sig])
+
+    return replacing_handlers

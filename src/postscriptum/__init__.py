@@ -44,7 +44,7 @@ If several functions are used as handlers for the same event:
     def _(context):
         print('two!')
 
-The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_hooks().
+The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_handlers().
 
 You can also react to ``sys.exit()`` and manual raise of ``SystemExit``:
 
@@ -98,13 +98,14 @@ For ``on_crash`` handlers:
 - **exception_type**: the class of the exception that lead to the crash
 - **exception_value**: the value of the exception that lead to the crash
 - **exception_traceback**: the traceback at the moment of the crash
-- **previous_exception_hook**: the callable that was the exception hook before we called setup()
+- **previous_exception_handler**: the callable that was the exception handler
+                                 before we called setup()
 
 For ``on_terminate`` handlers:
 
 - **signal**: the number representing the signal that was sent to terminate the program
 - **signal_frame**: the frame state at the moment the signal arrived
-- **previous_signal_hook**: the signal handler that was set before we called setup()
+- **previous_signal_handler**: the signal handler that was set before we called setup()
 - **recommended_exit_code**: the polite exit code to use when exiting after this signal
 
 For ``on_quit`` handlers:
@@ -116,7 +117,7 @@ For ``on_finish`` handlers:
 - The contex is empty if the program ends cleanly, otherwise,
   it will contain the same entries as one of the contexts above.
 
-Currently, postscriptum does not provide a hook for
+Currently, postscriptum does not provide hooks for
 
 - ``sys.unraisablehook``
 - exception occuring in other threads (``threading.excepthook`` from 3.8 will allow us to do that later)
@@ -126,7 +127,7 @@ Currently, postscriptum does not provide a hook for
     You must be very careful about the code you put in handlers. If you mess up in there,
     it may give you no error message!
 
-    Test your function without being a hook, then hook it up.
+    Test your function without being a handler, then hook it up.
 
 
 """
@@ -155,10 +156,10 @@ from typing import Callable, Iterable  # * does't include those
 from postscriptum.types import SignalType
 
 from postscriptum.register import (
-    register_except_hook,
-    restore_previous_except_hook,
-    register_signal_hook,
-    restore_signal_hooks,
+    register_exception_handler,
+    restore_previous_exception_handler,
+    register_signals_handler,
+    restore_signals_handlers,
 )
 from postscriptum.exceptions import ExitFromSignal
 
@@ -171,13 +172,13 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
 class ExitWatcher:
     """
-        A registry containing/attaching hooks to the various exit scenarios
+        A registry containing/attaching handlers to the various exit scenarios
 
     """
 
     def __init__(
         self,
-        call_previous_exception_hook: bool = True,
+        call_previous_exception_handler: bool = True,
         terminate_handlers: Dict[SignalType, Iterable[Callable]] = None,
         exit_handlers: Iterable[Callable] = (),
         finish_handlers: Iterable[Callable] = (),
@@ -185,7 +186,7 @@ class ExitWatcher:
         quit_handlers: Iterable[Callable] = (),
     ):
 
-        self.call_previous_exception_hook = call_previous_exception_hook
+        self.call_previous_exception_handlers = call_previous_exception_handler
 
         # Always called
         self._finish_handlers = list(finish_handlers)
@@ -207,8 +208,8 @@ class ExitWatcher:
         # duplicate calls
         self._called_handlers: Set[Callable] = set()
 
-        # We use this to avoid registering hooks twice
-        self._hooks_registered = False
+        # We use this to avoid registering handlers twice
+        self._handlers_registered = False
 
     def _create_handler_decorator(self, func, handlers: list, name: str):
         if func is not None:
@@ -266,26 +267,27 @@ class ExitWatcher:
     def on_crash(self, func=None):
         return self._create_handler_decorator(func, self._crash_handlers, "on_crash")
 
-    def register_hooks(self):
+    def register_handlers(self):
 
-        if self._hooks_registered:
-            self.restore_hooks()
+        if self._handlers_registered:
+            self.restore_handlers()
             raise RuntimeError(
-                "Hooks already registered, call restore_hooks() before calling register_hooks() again."
+                "Hooks already registered, call restore_handlers() before calling register_handlers() again."
             )
-        register_except_hook(
-            self._except_hook, call_previous_hook=self.call_previous_exception_hook
+        register_exception_handler(
+            self._exception_handler,
+            call_previous_handler=self.call_previous_exception_handlers,
         )
-        register_signal_hook(self._signal_hook, self._terminate_handlers.keys())
+        register_signals_handler(self._signal_handler, self._terminate_handlers.keys())
         atexit.register(self._call_finish_handlers)
 
-        self._hooks_registered = True
+        self._handlers_registered = True
 
-    def restore_hooks(self):
-        restore_previous_except_hook()
-        restore_signal_hooks(self._terminate_handlers.keys())
+    def restore_handlers(self):
+        restore_previous_exception_handler()
+        restore_signals_handlers(self._terminate_handlers.keys())
         atexit.unregister(self._call_finish_handlers)
-        self._hooks_registered = False
+        self._handlers_registered = False
 
     def _call_handler(self, handler: Callable, context: dict):
         if handler not in self._called_handlers:
@@ -297,26 +299,30 @@ class ExitWatcher:
         for handler in self._finish_handlers:
             self._call_handler(handler, context or {})
 
-    def _except_hook(
-        self, type: Type[Exception], value: Exception, traceback, old_hook: Callable
+    def _exception_handler(
+        self,
+        type: Type[Exception],
+        value: Exception,
+        traceback,
+        previous_handler: Callable,
     ):
         context: Dict[str, Any] = {}
         context["exception_type"] = type
         context["exception_value"] = value
         context["exception_traceback"] = traceback
-        context["previous_exception_hook"] = old_hook
+        context["previous_exception_handler"] = previous_handler
 
         for handler in self._crash_handlers:
             self._call_handler(handler, context)
 
         self._call_finish_handlers(context)
 
-    def _signal_hook(self, sig, frame, previous_hook):
+    def _signal_handler(self, sig, frame, previous_handler):
         recommended_exit_code = 128 + sig
         context = {}
         context["signal"] = sig
         context["signal_frame"] = frame
-        context["previous_signal_hook"] = previous_hook
+        context["previous_signal_handler"] = previous_handler
         context["recommended_exit_code"] = recommended_exit_code
 
         exit = True
@@ -365,6 +371,6 @@ class ExitWatcher:
 
 
 def setup(*args, **kwargs):
-    hook = ExitWatcher(*args, **kwargs)
-    hook.register_hooks()
-    return hook
+    watcher = ExitWatcher(*args, **kwargs)
+    watcher.register_handlers()
+    return watcher
