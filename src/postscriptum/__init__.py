@@ -151,15 +151,18 @@ from functools import wraps
 from contextlib import ContextDecorator
 
 from typing import *
+from typing import Callable, Iterable  # * does't include those
+from postscriptum.types import SignalType
 
 from postscriptum.register import (
-    PROCESS_ENDING_SIGNALS,
     register_except_hook,
-    restore_except_hook,
+    restore_previous_except_hook,
     register_signal_hook,
     restore_signal_hooks,
 )
 from postscriptum.exceptions import ExitFromSignal
+
+PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
 # TODO: threading excepthook: threading.excepthook()
@@ -175,8 +178,7 @@ class ExitWatcher:
     def __init__(
         self,
         call_previous_exception_hook: bool = True,
-        signals_to_catch: Iterable[str] = PROCESS_ENDING_SIGNALS,
-        terminate_handlers: Iterable[Callable] = (),
+        terminate_handlers: Dict[SignalType, Iterable[Callable]] = None,
         exit_handlers: Iterable[Callable] = (),
         finish_handlers: Iterable[Callable] = (),
         crash_handlers: Iterable[Callable] = (),
@@ -184,13 +186,16 @@ class ExitWatcher:
     ):
 
         self.call_previous_exception_hook = call_previous_exception_hook
-        self.signals_to_catch = signals_to_catch
 
         # Always called
         self._finish_handlers = list(finish_handlers)
 
         # Called on external signals and Ctrl + C
-        self._terminate_handlers = list(terminate_handlers)
+        if terminate_handlers is None:
+            terminate_handlers = {}
+        self._terminate_handlers: Dict[SignalType, List[Callable]] = {
+            sig: List(callables) for sig, callables in terminate_handlers.items()
+        }
 
         # Call when there is an unhandled exception
         self._crash_handlers = list(crash_handlers)
@@ -218,17 +223,27 @@ class ExitWatcher:
 
         return decorator
 
-    def add_quit_handler(self, func):
-        self._quit_handlers.append(func)
+    def add_quit_handler(self, func: Callable):
+        if func not in self._quit_handlers:
+            self._quit_handlers.append(func)
 
-    def add_finish_handler(self, func):
-        self._finish_handlers.append(func)
+    def add_finish_handler(self, func: Callable):
+        if func not in self._finish_handlers:
+            self._finish_handlers.append(func)
 
-    def add_terminate_handler(self, func):
-        self._terminate_handlers.append(func)
+    def add_terminate_handler(
+        self,
+        func: Callable,
+        signals: Iterable[Union[signal.Signals, str]] = PROCESS_TERMINATING_SIGNAL,
+    ):
+        for sig in signals:
+            handlers = self._terminate_handlers.setdefault(sig, [])
+            if func not in handlers:
+                handlers.append(func)
 
-    def add_crash_handler(self, func):
-        self._crash_handlers.append(func)
+    def add_crash_handler(self, func: Callable):
+        if func not in self._crash_handlers:
+            self._crash_handlers.append(func)
 
     def on_quit(self, func=None):
         return self._create_handler_decorator(func, self._quit_handlers, "on_quit")
@@ -236,10 +251,17 @@ class ExitWatcher:
     def on_finish(self, func=None):
         return self._create_handler_decorator(func, self._finish_handlers, "on_finish")
 
-    def on_terminate(self, func=None):
-        return self._create_handler_decorator(
-            func, self._terminate_handlers, "on_terminate"
-        )
+    def on_terminate(self, signals: Iterable[SignalType] = PROCESS_TERMINATING_SIGNAL):
+        if callable(signals):
+            raise ValueError(
+                f"on_terminate must be called before being used as a decorator. Add parenthesis: on_terminate()"
+            )
+
+        def decorator(func: Callable):
+            self.add_terminate_handler(func, signals)
+            return func
+
+        return decorator
 
     def on_crash(self, func=None):
         return self._create_handler_decorator(func, self._crash_handlers, "on_crash")
@@ -254,14 +276,14 @@ class ExitWatcher:
         register_except_hook(
             self._except_hook, call_previous_hook=self.call_previous_exception_hook
         )
-        register_signal_hook(self._signal_hook, signals=self.signals_to_catch)
+        register_signal_hook(self._signal_hook, self._terminate_handlers.keys())
         atexit.register(self._call_finish_handlers)
 
         self._hooks_registered = True
 
     def restore_hooks(self):
-        restore_except_hook()
-        restore_signal_hooks()
+        restore_previous_except_hook()
+        restore_signal_hooks(self._terminate_handlers.keys())
         atexit.unregister(self._call_finish_handlers)
         self._hooks_registered = False
 
@@ -278,7 +300,7 @@ class ExitWatcher:
     def _except_hook(
         self, type: Type[Exception], value: Exception, traceback, old_hook: Callable
     ):
-        context = {}
+        context: Dict[str, Any] = {}
         context["exception_type"] = type
         context["exception_value"] = value
         context["exception_traceback"] = traceback
@@ -289,16 +311,16 @@ class ExitWatcher:
 
         self._call_finish_handlers(context)
 
-    def _signal_hook(self, code, frame, previous_hook):
-        recommended_exit_code = 128 + code
+    def _signal_hook(self, sig, frame, previous_hook):
+        recommended_exit_code = 128 + sig
         context = {}
-        context["signal"] = code
+        context["signal"] = sig
         context["signal_frame"] = frame
         context["previous_signal_hook"] = previous_hook
         context["recommended_exit_code"] = recommended_exit_code
 
         exit = True
-        for handler in self._terminate_handlers:
+        for handler in self._terminate_handlers.get(sig, []):
             exit &= not self._call_handler(handler, context)
 
         self._call_finish_handlers(context)
@@ -327,16 +349,17 @@ class ExitWatcher:
                 "decorator: add parenthesis. E.G: if you have this object in "
                 "a variabled 'watch', do @watch() and not @watch."
             )
+        parent_self = self
 
         class Decorator(ContextDecorator):
-            def __enter__(s):
+            def __enter__(self):
                 pass
 
-            def __exit__(s, exception_type, exception_value, traceback):
+            def __exit__(self, exception_type, exception_value, traceback):
                 received_signal = isinstance(exception_value, ExitFromSignal)
                 received_quit = isinstance(exception_value, SystemExit)
                 if received_quit and not received_signal:
-                    return not self._call_quit_handlers(exception_value)
+                    return not parent_self._call_quit_handlers(exception_value)
 
         return Decorator()
 
