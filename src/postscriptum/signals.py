@@ -98,7 +98,7 @@ def register_signals_handler(
     """
 
     @wraps(handler)
-    def handler_wrapper(sig: signal.Signals, frame: FrameType) -> bool:
+    def handler_wrapper(sig: signal.Signals, frame: FrameType):
         return handler(sig, frame, SIGNAL_HANDLERS_HISTORY[sig][-1])
 
     previous_handlers = {}

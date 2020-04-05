@@ -153,8 +153,9 @@ from contextlib import ContextDecorator
 
 from typing import *
 from typing import Callable, Iterable  # * does't include those
-from postscriptum.types import SignalType
 
+from postscriptum.types import SignalType
+from postscriptum.system_exit import catch_system_exit
 from postscriptum.excepthook import (
     register_exception_handler,
     restore_previous_exception_handler,
@@ -167,8 +168,14 @@ from postscriptum.exceptions import ExitFromSignal
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
+
 # TODO: deal on_terminate should offer (exit=true)
 # TODO: extract exception catcher
+# TODO: add on_signals
+# TODO: tests __init__
+# TODO: coveragage
+# TODO: setup tox to test python 3.6, 7, 8, pypy3.6
+# TODO: test on azur cloud
 # TODO: check we can do the ctrl + c confirm
 # TODO: create an "examples" directory
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
@@ -349,31 +356,8 @@ class ExitWatcher:
         self._call_finish_handlers(context)
         return exit
 
-    def __call__(self, func=None):
-        """ Return an object that can be used to catch SystemExit
-
-            The object can be used both as a context manager and a decorator.
-        """
-
-        if func is not None:
-            raise ValueError(
-                f"This object must be called before being used as a "
-                "decorator: add parenthesis. E.G: if you have this object in "
-                "a variabled 'watch', do @watch() and not @watch."
-            )
-        parent_self = self
-
-        class Decorator(ContextDecorator):
-            def __enter__(self):
-                pass
-
-            def __exit__(self, exception_type, exception_value, traceback):
-                received_signal = isinstance(exception_value, ExitFromSignal)
-                received_quit = isinstance(exception_value, SystemExit)
-                if received_quit and not received_signal:
-                    return not parent_self._call_quit_handlers(exception_value)
-
-        return Decorator()
+    def __call__(self) -> catch_system_exit:
+        return catch_system_exit(self._call_quit_handlers)
 
 
 def setup(*args, **kwargs):

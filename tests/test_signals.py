@@ -20,7 +20,6 @@ def test_signals_from_names_windows():
     signals = list(signals_from_names(('SIGABRT', 'SIGBREAK', 'SIGTERM')))
     assert signals ==  [Signals.SIGABRT, Signals.SIGBREAK]
 
-
 @pytest.mark.skipif(not_unix, reason="Unix only test")
 def test_signals_from_names_unix():
 
@@ -29,7 +28,6 @@ def test_signals_from_names_unix():
 
     signals = list(signals_from_names((Signals.SIGABRT, 'SIGBREAK', 'SIGTERM')))
     assert signals ==  [Signals.SIGABRT, Signals.SIGTERM]
-
 
 def test_register_and_restore_signal_handlers():
 
