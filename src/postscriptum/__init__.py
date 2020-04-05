@@ -155,16 +155,22 @@ from typing import *
 from typing import Callable, Iterable  # * does't include those
 from postscriptum.types import SignalType
 
-from postscriptum.register import (
+from postscriptum.excepthook import (
     register_exception_handler,
     restore_previous_exception_handler,
+)
+from postscriptum.signals import (
     register_signals_handler,
-    restore_signals_handlers,
+    restore_previous_signals_handlers,
 )
 from postscriptum.exceptions import ExitFromSignal
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
+# TODO: deal on_terminate should offer (exit=true)
+# TODO: extract exception catcher
+# TODO: check we can do the ctrl + c confirm
+# TODO: create an "examples" directory
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
 # TODO: threading excepthook: threading.excepthook()
 # TODO: default for unhandled error in asyncio
@@ -285,7 +291,7 @@ class ExitWatcher:
 
     def restore_handlers(self):
         restore_previous_exception_handler()
-        restore_signals_handlers(self._terminate_handlers.keys())
+        restore_previous_signals_handlers(self._terminate_handlers.keys())
         atexit.unregister(self._call_finish_handlers)
         self._handlers_registered = False
 
