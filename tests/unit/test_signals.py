@@ -9,18 +9,18 @@ from signal import Signals
 
 import pytest
 
+from postscriptum.utils import is_unix, is_windows
 from postscriptum.signals import signals_from_names, SIGNAL_HANDLERS_HISTORY, register_signals_handler, restore_previous_signals_handlers
 
-not_windows = not sys.platform.startswith("win")
-not_unix = not any(sys.platform.startswith(n) for n in ('linux', 'freebsd', 'darwin'))
 
-@pytest.mark.skipif(not_windows, reason="Windows only test")
+
+@pytest.mark.skipif(not is_windows, reason="Windows only test")
 def test_signals_from_names_windows():
 
     signals = list(signals_from_names(('SIGABRT', 'SIGBREAK', 'SIGTERM')))
     assert signals ==  [Signals.SIGABRT, Signals.SIGBREAK]
 
-@pytest.mark.skipif(not_unix, reason="Unix only test")
+@pytest.mark.skipif(not is_unix, reason="Unix only test")
 def test_signals_from_names_unix():
 
     signals = list(signals_from_names(('SIGABRT', 'SIGBREAK', 'SIGTERM')))
@@ -65,7 +65,7 @@ def test_register_and_restore_signal_handlers():
     assert signal.getsignal(signal.SIGABRT) is original_handler, "Current signal handler should be the original one"
 
 
-@pytest.mark.skipif(not_unix, reason="Unix only test")
+@pytest.mark.skipif(not is_unix, reason="Unix only test")
 def test_register_and_restore_several_signal_handlers():
 
     assert not SIGNAL_HANDLERS_HISTORY

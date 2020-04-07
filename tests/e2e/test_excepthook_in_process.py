@@ -3,7 +3,7 @@ import sys
 from subprocess import Popen, PIPE
 from pathlib import Path
 
-TEST_SCRIPT = Path(__file__).absolute().parent / "run_except_hook.py"
+TEST_SCRIPT = Path(__file__).absolute().parent / "run_except_handler.py"
 
 
 def test_register():
