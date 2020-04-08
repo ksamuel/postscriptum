@@ -34,6 +34,21 @@ def test_finish_handler():
 
     finish_handler.assert_called_once()
 
+    watch = EventWatcher()
+
+    with pytest.raises(AssertionError):
+        @watch.on_finish
+        def _():
+            pass
+
+    @watch.on_finish()
+    def _():
+        pass
+
+    assert set(watch.finish_handlers) == {
+        _
+    }, "on_finish() should add the function as a handler"
+
 
 def test_crash_handler():
 
@@ -63,6 +78,23 @@ def test_crash_handler():
         )
 
     assert sys.excepthook == sys.__excepthook__, "Stop reset the except hook"
+
+    watch = EventWatcher()
+
+    with pytest.raises(AssertionError):
+
+        @watch.on_crash
+        def _():
+            pass
+
+    @watch.on_crash()
+    def _():
+        pass
+
+    assert set(watch.crash_handlers) == {
+        _
+    }, "on_crash() should add the function as a handler"
+
 
 
 def test_terminate_handler(subtests):
@@ -113,3 +145,19 @@ def test_terminate_handler(subtests):
             with subtests.test(msg="Test each signal handler without exit", signal=sig):
                 handler = signal.getsignal(sig)
                 handler(sig, fake_frame)
+
+    watch = EventWatcher()
+
+    with pytest.raises(AssertionError):
+
+        @watch.on_terminate
+        def _():
+            pass
+
+    @watch.on_terminate()
+    def _():
+        pass
+
+    assert set(watch.terminate_handlers) == {
+        _
+    }, "on_terminate() should add the function as a handler"

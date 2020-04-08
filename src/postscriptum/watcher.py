@@ -277,13 +277,13 @@ class EventWatcher:
     def _create_handler_decorator(self, func, add_handler: Callable, name: str):
         """ Utility method to create the on_* decorators for each type of event
         """
-        if func is not None:
-            raise ValueError(
-                f"{name} must be called before being used as a decorator. Add parenthesis: {name}()"
-            )
+        assert func is None, (
+            f"{name} must be called before being used as a decorator. "
+            "Add parenthesis: {name}()"
+        )
 
         def decorator(func):
-            self.add_handler(func)
+            add_handler(func)
             return func
 
         return decorator
