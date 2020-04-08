@@ -38,14 +38,19 @@ class catch_system_exit(ContextDecorator):
 
     def __init__(
         self,
-        handler: Callable[[Type[Exception], Exception, TracebackType], None],
+        on_system_exit: Callable[[Type[Exception], Exception, TracebackType], None],
+        on_enter: Callable = None,
+        on_exit: Callable[[Type[Exception], Exception, TracebackType], None] = None,
         raise_again: bool = True,
     ):
-        self.handler = handler
+        self.on_enter = on_enter
+        self.on_exit = on_exit
+        self.on_system_exit = on_system_exit
         self.raise_again = raise_again
 
     def __enter__(self):
-        pass
+        if self.on_enter:
+            self.on_enter()
 
     def __exit__(
         self,
@@ -53,8 +58,10 @@ class catch_system_exit(ContextDecorator):
         exception_value: Exception,
         traceback: TracebackType,
     ) -> bool:
+        if self.on_exit:
+            self.on_exit(exception_type, exception_value, traceback)
         received_signal = isinstance(exception_value, ExitFromSignal)
         received_quit = isinstance(exception_value, SystemExit)
         if received_quit and not received_signal:
-            self.handler(exception_type, exception_value, traceback)
+            self.on_system_exit(exception_type, exception_value, traceback)
         return not self.raise_again
