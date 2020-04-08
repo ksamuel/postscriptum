@@ -1,4 +1,3 @@
-
 import sys
 
 from unittest.mock import Mock
@@ -7,6 +6,7 @@ import pytest
 
 from postscriptum.system_exit import catch_system_exit
 from postscriptum.exceptions import ExitFromSignal
+
 
 def catcher(exception_type, exception_value, traceback):
     pass

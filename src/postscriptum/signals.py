@@ -112,7 +112,7 @@ def register_signals_handler(
 
 
 def restore_previous_signals_handlers(
-    signals: Iterable[signal.Signals],
+    signals: Iterable[SignalType],
 ) -> Mapping[signal.Signals, SignalHandlerType]:
     """ Restore signals handlers to their previous values
 

@@ -14,6 +14,8 @@ PostScripumExceptionHandlerType = Callable[
     [Type[BaseException], BaseException, TracebackType, ExceptionHandlerType], None,
 ]
 
+EventWatcherHandlerType = Callable[[dict], None]
+
 # The values to set as a handler for a given signal
 SignalHandlerType = Union[
     Callable[[signal.Signals, FrameType], None], int, signal.Handlers, None
