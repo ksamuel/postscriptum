@@ -37,6 +37,7 @@ def test_finish_handler():
     watch = EventWatcher()
 
     with pytest.raises(AssertionError):
+
         @watch.on_finish
         def _():
             pass
@@ -94,7 +95,6 @@ def test_crash_handler():
     assert set(watch.crash_handlers) == {
         _
     }, "on_crash() should add the function as a handler"
-
 
 
 def test_terminate_handler(subtests):
@@ -161,3 +161,14 @@ def test_terminate_handler(subtests):
     assert set(watch.terminate_handlers) == {
         _
     }, "on_terminate() should add the function as a handler"
+
+
+def test_watcher_context_decorator():
+
+    watch = EventWatcher()
+
+    context_decorator = watch()
+
+    assert context_decorator.on_enter == watch.start
+    assert context_decorator.on_exit.__wrapped__ == watch.stop
+    assert context_decorator.on_system_exit == watch._call_quit_handlers

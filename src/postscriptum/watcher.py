@@ -59,10 +59,10 @@ BUT for this you MUST use the watcher as a decorator:
 ::
 
     @watch()
-    def main():
-        do_stuff()
+    def do_stuff():
+        ...
 
-    main()
+    do_stuff()
 
 Or as a context manager:
 
@@ -131,15 +131,6 @@ Currently, postscriptum does not provide hooks for
 
 """
 
-# TODO: test
-# TODO: more doc
-# TODO: remove handlers
-# TODO: provide testing infrastructure
-# TODO: ensure the exit prevention workflow for all hooks
-# TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
-# TODO: threading excepthook: threading.excepthook()
-# TODO: default for unhandled error in asyncio ?
-
 
 import sys
 import os
@@ -171,11 +162,8 @@ from postscriptum.exceptions import ExitFromSignal
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
 
+# TODO: improve error messages
 # TODO: e2e on decorators
-# TODO: deal on_terminate should offer (exit=true)
-# TODO: add on_signals
-# TODO: tests __init__
-# TODO: turn terminate handler into on
 # TODO: coveragage
 # TODO: setup tox to test python 3.6, 7, 8, pypy3.6
 # TODO: test on azur cloud
@@ -184,6 +172,8 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
 # TODO: threading excepthook: threading.excepthook()
 # TODO: default for unhandled error in asyncio
+# TODO: more doc
+# TODO: provide testing infrastructure
 
 
 class EventWatcher:
@@ -215,7 +205,7 @@ class EventWatcher:
 
         # A set of already called handlers to avoid
         # duplicate calls
-        self._called_handlers: OrderedSet[EventWatcherHandlerType] = OrderedSet()
+        self._called_handlers: Set[EventWatcherHandlerType] = set()
 
         # We use this to avoid registering handlers twice
         self._started = False
@@ -347,7 +337,10 @@ class EventWatcher:
         return exit
 
     def __call__(self) -> catch_system_exit:
+        @wraps(self.stop)
+        def exit_handler_wrapper(*args, **kwargs):
+            self.stop()
 
         return catch_system_exit(
-            self._call_quit_handlers, self.start, lambda *args, **kwargs: self.stop()
+            self._call_quit_handlers, self.start, exit_handler_wrapper
         )

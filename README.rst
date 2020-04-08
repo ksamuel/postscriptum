@@ -64,10 +64,10 @@ BUT for this you MUST use the watcher as a decorator:
 ::
 
     @watch()
-    def main():
-        do_stuff()
+    def do_stuff():
+        ...
 
-    main()
+    do_stuff()
 
 Or as a context manager:
 
