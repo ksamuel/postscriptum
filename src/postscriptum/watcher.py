@@ -198,6 +198,7 @@ class EventWatcher:
         exit_after_terminate_handlers: bool = True,
     ):
 
+        self.exit_after_terminate_handlers = exit_after_terminate_handlers
         self.call_previous_exception_handlers = call_previous_exception_handler
 
         # Always called
@@ -223,20 +224,6 @@ class EventWatcher:
     def started(self) -> bool:
         """ Make the public property read only """
         return self._started
-
-    def _create_handler_decorator(self, func, add_handler: Callable, name: str):
-        """ Utility method to create the on_* decorators for each type of event
-        """
-        if func is not None:
-            raise ValueError(
-                f"{name} must be called before being used as a decorator. Add parenthesis: {name}()"
-            )
-
-        def decorator(func):
-            self.add_handler(func)
-            return func
-
-        return decorator
 
     def on_terminate(self, func=None):
         return self._create_handler_decorator(
@@ -287,6 +274,20 @@ class EventWatcher:
 
         self._started = False
 
+    def _create_handler_decorator(self, func, add_handler: Callable, name: str):
+        """ Utility method to create the on_* decorators for each type of event
+        """
+        if func is not None:
+            raise ValueError(
+                f"{name} must be called before being used as a decorator. Add parenthesis: {name}()"
+            )
+
+        def decorator(func):
+            self.add_handler(func)
+            return func
+
+        return decorator
+
     def _call_handler(self, handler: EventWatcherHandlerType, context: dict):
         if handler not in self._called_handlers:
             self._called_handlers.add(handler)
@@ -296,6 +297,7 @@ class EventWatcher:
     def _call_finish_handlers(self, context: dict = None):
         for handler in self.finish_handlers:
             self._call_handler(handler, context or {})
+        self._called_handlers = set()
 
     def _call_crash_handlers(
         self,
@@ -323,13 +325,15 @@ class EventWatcher:
         context["previous_signal_handler"] = previous_handler
         context["recommended_exit_code"] = recommended_exit_code
 
-        for handler in self.terminate_handlers.get(sig, []):
+        for handler in self.terminate_handlers:
             self._call_handler(handler, context)
 
-        self._call_finish_handlers(context)
-
+        # TODO: check that a custom exit will trigger finish anyway
         if self.exit_after_terminate_handlers:
+            self._call_finish_handlers(context)
             raise ExitFromSignal(recommended_exit_code)
+
+        self._called_handlers = set()
 
     def _call_quit_handlers(
         self, type_: Type[SystemExit], exception: SystemExit, traceback: TracebackType
