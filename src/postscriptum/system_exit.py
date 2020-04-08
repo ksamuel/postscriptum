@@ -1,4 +1,5 @@
 from typing import *
+from typing import cast
 from types import TracebackType
 
 from contextlib import ContextDecorator
@@ -63,5 +64,7 @@ class catch_system_exit(ContextDecorator):
         received_signal = isinstance(exception_value, ExitFromSignal)
         received_quit = isinstance(exception_value, SystemExit)
         if received_quit and not received_signal:
-            self.on_system_exit(exception_type, exception_value, traceback)
+            self.on_system_exit(
+                cast(SystemExit, exception_type), exception_value, traceback
+            )
         return not self.raise_again

@@ -161,10 +161,14 @@ from postscriptum.exceptions import ExitFromSignal
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
-
+# TODO: test if one can call sys.exit() in a terminate handler
+# TODO: test if on can reraise from a quit handler
+# TODO: check if one can avoid exciting from an exception handler and then exit manually
+# TODO: check finish handler always get the proper context
+# TODO: test with several handlers
 # TODO: improve error messages
 # TODO: e2e on decorators
-# TODO: coveragage
+# TODO: coverage
 # TODO: setup tox to test python 3.6, 7, 8, pypy3.6
 # TODO: test on azur cloud
 # TODO: check we can do the ctrl + c confirm
@@ -174,6 +178,7 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 # TODO: default for unhandled error in asyncio
 # TODO: more doc
 # TODO: provide testing infrastructure
+# TODO: write docstrings
 
 
 class EventWatcher:
@@ -186,8 +191,10 @@ class EventWatcher:
         self,
         call_previous_exception_handler: bool = True,
         exit_after_terminate_handlers: bool = True,
+        raise_again_after_quit_handlers: bool = True,
     ):
 
+        self.raise_again_after_quit_handlers = raise_again_after_quit_handlers
         self.exit_after_terminate_handlers = exit_after_terminate_handlers
         self.call_previous_exception_handlers = call_previous_exception_handler
 
@@ -318,6 +325,7 @@ class EventWatcher:
         for handler in self.terminate_handlers:
             self._call_handler(handler, context)
 
+        # TODO: check manual exit
         # TODO: check that a custom exit will trigger finish anyway
         if self.exit_after_terminate_handlers:
             self._call_finish_handlers(context)
@@ -325,16 +333,15 @@ class EventWatcher:
 
         self._called_handlers = set()
 
+    # TODO: test reraise from there
     def _call_quit_handlers(
         self, type_: Type[SystemExit], exception: SystemExit, traceback: TracebackType
     ):
         context = {}
         context["exit_code"] = exception.code
-        exit = True
         for handler in self.quit_handlers:
-            exit &= not self._call_handler(handler, context)
+            self._call_handler(handler, context)
         self._call_finish_handlers(context)
-        return exit
 
     def __call__(self) -> catch_system_exit:
         @wraps(self.stop)
@@ -342,5 +349,9 @@ class EventWatcher:
             self.stop()
 
         return catch_system_exit(
-            self._call_quit_handlers, self.start, exit_handler_wrapper
+            self._call_quit_handlers,
+            self.start,
+            exit_handler_wrapper,
+            raise_again=self.raise_again_after_quit_handlers,
         )
+
