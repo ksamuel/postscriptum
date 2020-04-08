@@ -38,7 +38,7 @@ class catch_system_exit(ContextDecorator):
 
     def __init__(
         self,
-        on_system_exit: Callable[[Type[Exception], Exception, TracebackType], None],
+        on_system_exit: Callable[[Type[SystemExit], SystemExit, TracebackType], None],
         on_enter: Callable = None,
         on_exit: Callable[[Type[Exception], Exception, TracebackType], None] = None,
         raise_again: bool = True,
