@@ -1,20 +1,17 @@
-import io
-import os
 import sys
 import signal
 import asyncio
 
-from subprocess import Popen, PIPE
 from pathlib import Path
 
 import pytest
 
-from postscriptum.utils import is_unix, is_windows
+from postscriptum.utils import IS_UNIX, IS_WINDOWS
 
 TEST_SCRIPT = Path(__file__).absolute().parent / "run_signal_handler.py"
 
 
-@pytest.mark.skipif(not is_unix, reason="Unix only test")
+@pytest.mark.skipif(not IS_UNIX, reason="Unix only test")
 def test_register_on_unix():
 
     exit_on_sigint = True
@@ -22,7 +19,7 @@ def test_register_on_unix():
     async def main():
 
         nonlocal exit_on_sigint
-        proc = await asyncio.subprocess.create_subprocess_exec(
+        proc = await asyncio.create_subprocess_exec(
             sys.executable, str(TEST_SCRIPT), stdout=asyncio.subprocess.PIPE
         )
 
@@ -46,7 +43,7 @@ def test_register_on_unix():
     assert not exit_on_sigint, "SIGINT handler should not have exited"
 
 
-@pytest.mark.skipif(not is_windows, reason="Unix only test")
+@pytest.mark.skipif(not IS_WINDOWS, reason="Unix only test")
 def test_register_on_windows():
 
     exit_on_sigint = True
@@ -54,7 +51,7 @@ def test_register_on_windows():
     async def main():
 
         nonlocal exit_on_sigint
-        proc = await asyncio.subprocess.create_subprocess_exec(
+        proc = await asyncio.create_subprocess_exec(
             sys.executable, str(TEST_SCRIPT), stdout=asyncio.subprocess.PIPE
         )
 

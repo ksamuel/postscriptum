@@ -8,5 +8,3 @@ class ExitFromSignal(SystemExit):
         This is done to catch it specifically later and deal with this exit
         as a special case.
     """
-
-    pass

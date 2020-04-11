@@ -1,7 +1,6 @@
 import signal
 
-from typing import *
-from typing import Callable  # * does't include those
+from typing import Callable, Type, Any, Union
 from types import TracebackType, FrameType
 
 # The callable in sys.excepthook

@@ -1,18 +1,9 @@
 import sys
-import signal
 
-from typing import *
-from typing import cast
-from types import TracebackType, FrameType
+from typing import List, Type
+from types import TracebackType
 
-from functools import wraps
-
-from postscriptum.types import (
-    SignalType,
-    ExceptionHandlerType,
-    SignalHandlerType,
-    PostScripumExceptionHandlerType,
-)
+from postscriptum.types import ExceptionHandlerType, PostScripumExceptionHandlerType
 
 
 EXCEPTION_HANDLERS_HISTORY: List[ExceptionHandlerType] = []
@@ -60,7 +51,7 @@ def register_exception_handler(
 
             You can get a reference on the {handler}() function by accessing
             handler_wrapper.__wrapped__
-        """
+        """  # pylint: disable=pointless-statement
         if call_previous_handler:
             previous_except_handler(type_, value, traceback)
         return handler(type_, value, traceback, previous_except_handler)

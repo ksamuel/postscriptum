@@ -45,13 +45,17 @@ def test_register_and_restore_except_handler():
     assert EXCEPTION_HANDLERS_HISTORY == [
         original_python_handler,
         first_handler_wrapper,
-    ], "The history should now contains both the original python handler and the wrapper around our first callback"
-    assert (
-        sys.excepthook is not first_handler_wrapper
-    ), "The wrapper around our first callback should not be the current except handler"
-    assert (
-        sys.excepthook.__wrapped__ is mock_handler_2
-    ), "The current except handler should be the wrapper around our second callback"
+    ], (
+        "The history should now contains both the original"
+        "python handler and the wrapper around our first callback"
+    )
+    assert sys.excepthook is not first_handler_wrapper, (
+        "The wrapper around our first callback should not be"
+        "the current except handler"
+    )
+    assert sys.excepthook.__wrapped__ is mock_handler_2, (
+        "The current except handler should be the wrapper" "around our second callback"
+    )
 
     restore_previous_exception_handler()
 

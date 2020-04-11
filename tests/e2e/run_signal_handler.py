@@ -3,7 +3,7 @@ import time
 from postscriptum.signals import register_signals_handler
 
 
-def handler(code, frame, previous_handler):
+def handler(code, frame, previous_handler):  # pylint: disable-all
     print("handled", flush=True)
 
 

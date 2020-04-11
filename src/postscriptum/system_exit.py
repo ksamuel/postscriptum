@@ -1,4 +1,4 @@
-from typing import *
+from typing import Callable, Type
 from typing import cast
 from types import TracebackType
 
@@ -7,7 +7,7 @@ from contextlib import ContextDecorator
 from postscriptum.exceptions import ExitFromSignal
 
 
-class catch_system_exit(ContextDecorator):
+class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
     """React to system exit if it's not sent from a signal handler.
 
     It can be used as a decorator and a context manager.
@@ -21,7 +21,7 @@ class catch_system_exit(ContextDecorator):
     Example:
 
             def callback(exception_type, exception_value, traceback):
-                print("I will be called is something call sys.exit() or raise SystemExit")
+                print("I will be called on sys.exit() or raise SystemExit")
 
             # This prints, then exit.
             with catch_system_exit(callback):
@@ -65,6 +65,8 @@ class catch_system_exit(ContextDecorator):
         received_quit = isinstance(exception_value, SystemExit)
         if received_quit and not received_signal:
             self.on_system_exit(
-                cast(SystemExit, exception_type), exception_value, traceback
+                cast(Type[SystemExit], exception_type),
+                cast(SystemExit, exception_value),
+                traceback,
             )
         return not self.raise_again

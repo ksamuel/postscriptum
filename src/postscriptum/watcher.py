@@ -1,6 +1,7 @@
 """Postscriptum: an intuitive and unified API to run code when Python exit
 
-Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and ``signal.signal`` to lets you do:
+Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and
+``signal.signal`` to lets you do:
 
 ::
 
@@ -13,13 +14,15 @@ Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and ``signal.signal``
 
     @watch.on_terminate()
     def _(context):  # context contains the signal that lead to termination
-        print("When the user terminates the program. E.G: Ctrl + C, kill -9, etc.")
+        print("When the user terminates the program. E.G: Ctrl + C")
 
     @watch.on_crash()
     def _(context): # context contains the exception and traceback
         print("When there is an unhandled exception")
 
-All those functions will be called automatically at the proper moment. The handler for ``on_finish`` will be called even if another handler has been called.
+All those functions will be called automatically at the proper moment.
+The handler for ``on_finish`` will be called even if another handler
+has been called.
 
 If the same function is used for several events:
 
@@ -44,7 +47,10 @@ If several functions are used as handlers for the same event:
     def _(context):
         print('two!')
 
-The two functions will be called. Hooks from code not using postscriptum will be preserved by default for exceptions and atexit.  Hooks from code not using postscriptum for signals are replaced. They can be restored using watch.restore_handlers().
+The two functions will be called. Hooks from code not using postscriptum will
+be preserved by default for exceptions and atexit.  Hooks from code not using
+postscriptum for signals are replaced. They can be restored
+using watch.restore_handlers().
 
 You can also react to ``sys.exit()`` and manual raise of ``SystemExit``:
 
@@ -72,7 +78,8 @@ Or as a context manager:
         do_stuff()
 
 
-All decorators are stackable. If you use other decorators than the ones from postcriptum, put postcriptum decorators at the top:
+All decorators are stackable. If you use other decorators than the ones
+from postcriptum, put postcriptum decorators at the top:
 
 ::
 
@@ -89,7 +96,8 @@ Alternatively, you can add the handler imperatively:
     def handler(context):
         pass
 
-``watch.add_quit_handler(handler)``. All ``on_*`` method have their imperative equivalent.
+``watch.add_quit_handler(handler)``. All ``on_*`` method have their
+imperative equivalent.
 
 The context is a dictionary that can contain:
 
@@ -105,8 +113,10 @@ For ``on_terminate`` handlers:
 
 - **signal**: the number representing the signal that was sent to terminate the program
 - **signal_frame**: the frame state at the moment the signal arrived
-- **previous_signal_handler**: the signal handler that was set before we called setup()
-- **recommended_exit_code**: the polite exit code to use when exiting after this signal
+- **previous_signal_handler**: the signal handler that was set before
+  we called setup()
+- **recommended_exit_code**: the polite exit code to use when exiting
+  after this signal
 
 For ``on_quit`` handlers:
 
@@ -120,34 +130,29 @@ For ``on_finish`` handlers:
 Currently, postscriptum does not provide hooks for
 
 - ``sys.unraisablehook``
-- exception occuring in other threads (``threading.excepthook`` from 3.8 will allow us to do that later)
-- unhandled exception errors in unawaited asyncio (not sure we should do something though)
+- exception occuring in other threads (``threading.excepthook`` from 3.8
+  will allow us to do that later)
+- unhandled exception errors in unawaited asyncio (not sure we should do
+  something though)
 
 .. warning::
-    You must be very careful about the code you put in handlers. If you mess up in there,
-    it may give you no error message!
+    You must be very careful about the code you put in handlers. If you mess
+    up in there, it may give you no error message!
 
     Test your function without being a handler, then hook it up.
 
 """
 
-
-import sys
-import os
-import time
 import atexit
-import signal
 
 from functools import wraps
-from contextlib import ContextDecorator
 
-from typing import *
-from typing import Callable, Iterable  # * does't include those
+from typing import Callable, Set, Dict, Type, Any
 from types import TracebackType
 
 from ordered_set import OrderedSet
 
-from postscriptum.types import SignalType, EventWatcherHandlerType
+from postscriptum.types import EventWatcherHandlerType
 from postscriptum.system_exit import catch_system_exit
 from postscriptum.excepthook import (
     register_exception_handler,
@@ -158,18 +163,17 @@ from postscriptum.signals import (
     restore_previous_signals_handlers,
 )
 from postscriptum.exceptions import ExitFromSignal
+from postscriptum.utils import create_handler_decorator
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
 # TODO: test if one can call sys.exit() in a terminate handler
 # TODO: test if on can reraise from a quit handler
 # TODO: check if one can avoid exciting from an exception handler and then exit manually
-# TODO: check finish handler always get the proper context
 # TODO: test with several handlers
+# TODO: test if context is passed to finish
 # TODO: improve error messages
 # TODO: e2e on decorators
-# TODO: coverage
-# TODO: setup tox to test python 3.6, 7, 8, pypy3.6
 # TODO: test on azur cloud
 # TODO: check we can do the ctrl + c confirm
 # TODO: create an "examples" directory
@@ -177,7 +181,6 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 # TODO: threading excepthook: threading.excepthook()
 # TODO: default for unhandled error in asyncio
 # TODO: more doc
-# TODO: provide testing infrastructure
 # TODO: write docstrings
 
 
@@ -223,20 +226,18 @@ class EventWatcher:
         return self._started
 
     def on_terminate(self, func=None):
-        return self._create_handler_decorator(
+        return create_handler_decorator(
             func, self.terminate_handlers.add, "on_terminate"
         )
 
     def on_quit(self, func=None):
-        return self._create_handler_decorator(func, self.quit_handlers.add, "on_quit")
+        return create_handler_decorator(func, self.quit_handlers.add, "on_quit")
 
     def on_finish(self, func=None):
-        return self._create_handler_decorator(
-            func, self.finish_handlers.add, "on_finish"
-        )
+        return create_handler_decorator(func, self.finish_handlers.add, "on_finish")
 
     def on_crash(self, func=None):
-        return self._create_handler_decorator(func, self.crash_handlers.add, "on_crash")
+        return create_handler_decorator(func, self.crash_handlers.add, "on_crash")
 
     def start(self):
 
@@ -271,20 +272,6 @@ class EventWatcher:
 
         self._started = False
 
-    def _create_handler_decorator(self, func, add_handler: Callable, name: str):
-        """ Utility method to create the on_* decorators for each type of event
-        """
-        assert func is None, (
-            f"{name} must be called before being used as a decorator. "
-            "Add parenthesis: {name}()"
-        )
-
-        def decorator(func):
-            add_handler(func)
-            return func
-
-        return decorator
-
     def _call_handler(self, handler: EventWatcherHandlerType, context: dict):
         if handler not in self._called_handlers:
             self._called_handlers.add(handler)
@@ -298,14 +285,14 @@ class EventWatcher:
 
     def _call_crash_handlers(
         self,
-        type: Type[Exception],
-        value: Exception,
+        type_: Type[Exception],
+        exception: Exception,
         traceback,
         previous_handler: Callable,
     ):
         context: Dict[str, Any] = {}
-        context["exception_type"] = type
-        context["exception_value"] = value
+        context["exception_type"] = type_
+        context["exception_value"] = exception
         context["exception_traceback"] = traceback
         context["previous_exception_handler"] = previous_handler
 
@@ -354,4 +341,3 @@ class EventWatcher:
             exit_handler_wrapper,
             raise_again=self.raise_again_after_quit_handlers,
         )
-

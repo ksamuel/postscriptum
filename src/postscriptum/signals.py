@@ -3,18 +3,13 @@
 
 import signal
 
-from typing import *
+from typing import Dict, List, Iterable, Union, Callable, Optional, Mapping
 from typing import cast
-from types import TracebackType, FrameType
+from types import FrameType
 
 from functools import wraps
 
-from postscriptum.types import (
-    SignalType,
-    ExceptionHandlerType,
-    SignalHandlerType,
-    PostScripumExceptionHandlerType,
-)
+from postscriptum.types import SignalType, SignalHandlerType
 
 
 SIGNAL_HANDLERS_HISTORY: Dict[signal.Signals, List[SignalHandlerType]] = {}
