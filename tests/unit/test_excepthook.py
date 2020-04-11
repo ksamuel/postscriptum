@@ -118,3 +118,6 @@ def test_register_and_restore_except_handler_with_call():
         assert (
             not original_python_handler.call_count
         ), "Original handler should not have been called"
+
+    with pytest.raises(IndexError):
+        restore_previous_exception_handler()

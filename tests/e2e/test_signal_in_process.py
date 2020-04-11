@@ -30,7 +30,9 @@ def test_register_on_unix():
             await asyncio.wait_for(proc.stdout.read(1024), timeout=0.1)
             assert False, "Reading should not work"
         except asyncio.TimeoutError:
-            pass
+            # Python 3.6 has a bug (https://github.com/encode/httpx/pull/383)
+            # so we need to do this:
+            await asyncio.sleep(0)
 
         proc.send_signal(signal.SIGINT)
         stdout = await proc.stdout.read(1024)

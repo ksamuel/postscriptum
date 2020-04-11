@@ -124,6 +124,10 @@ def test_register_and_restore_several_signal_handlers():
     restore_previous_signals_handlers(["SIGABRT", signal.SIGINT])
 
     assert not SIGNAL_HANDLERS_HISTORY, "History should be empty"
+
+    with pytest.raises(IndexError):
+        restore_previous_signals_handlers(["SIGABRT", signal.SIGINT])
+
     assert (
         signal.getsignal(signal.SIGABRT) is original_sigart_handler
     ), "Current signal handler should be the original one"
