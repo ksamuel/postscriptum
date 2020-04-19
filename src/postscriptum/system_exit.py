@@ -1,9 +1,10 @@
-from typing import Callable, Type
+from typing import Callable, Type, Any
 from typing import cast
 from types import TracebackType
 
 from contextlib import ContextDecorator
 
+from postscriptum.types import ExceptionHandlerType
 from postscriptum.exceptions import ExitFromSignal
 
 
@@ -39,9 +40,9 @@ class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
 
     def __init__(
         self,
-        on_system_exit: Callable[[Type[SystemExit], SystemExit, TracebackType], None],
+        on_system_exit: Callable[[Type[SystemExit], SystemExit, TracebackType], Any],
         on_enter: Callable = None,
-        on_exit: Callable[[Type[Exception], Exception, TracebackType], None] = None,
+        on_exit: ExceptionHandlerType = None,
         raise_again: bool = True,
     ):
         self.on_enter = on_enter
@@ -59,8 +60,7 @@ class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
         exception_value: Exception,
         traceback: TracebackType,
     ) -> bool:
-        if self.on_exit:
-            self.on_exit(exception_type, exception_value, traceback)
+
         received_signal = isinstance(exception_value, ExitFromSignal)
         received_quit = isinstance(exception_value, SystemExit)
         if received_quit and not received_signal:
@@ -69,4 +69,7 @@ class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
                 cast(SystemExit, exception_value),
                 traceback,
             )
+        elif self.on_exit:
+            self.on_exit(exception_type, exception_value, traceback)
+
         return not self.raise_again

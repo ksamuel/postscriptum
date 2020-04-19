@@ -26,7 +26,6 @@ def test_decorator():
         _()
 
     on_enter.assert_called_once()
-    assert on_system_exit.call_args == on_exit.call_args
 
     (exception_class, exception, traceback), kwargs = on_system_exit.call_args
     assert isinstance(exception, exception_class), "We should have info on exception"
@@ -49,7 +48,6 @@ def test_context_manager():
         raise sys.exit(0)
 
     on_enter.assert_called_once()
-    assert on_system_exit.call_args == on_exit.call_args
 
     (exception_class, exception, traceback), kwargs = on_system_exit.call_args
     assert isinstance(exception, exception_class), "We should have info on exception"

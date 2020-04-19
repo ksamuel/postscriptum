@@ -18,7 +18,6 @@ def test_watcher_context_decorator():
     context_decorator = watch()
 
     assert context_decorator.on_enter == watch.start
-    assert context_decorator.on_exit.__wrapped__ == watch.stop
     assert context_decorator.on_system_exit == watch._call_quit_handlers
 
     with pytest.raises(RuntimeError):
@@ -92,6 +91,7 @@ def test_crash_handler():
             }
         )
 
+    watch.stop()
     assert sys.excepthook == sys.__excepthook__, "Stop reset the except hook"
 
     watch = EventWatcher()
@@ -142,6 +142,8 @@ def test_terminate_handler(subtests):
                         "recommended_exit_code": sig + 128,
                     }
                 ), "Our handler should be called with the signal context"
+
+    watch.stop()
 
     for sig in signals_from_names(PROCESS_TERMINATING_SIGNAL):
         with subtests.test(msg="Check that each handler is reset", signal=sig):
@@ -231,4 +233,3 @@ def test_handlers_are_not_called_twice():
                 "previous_exception_handler": EXCEPTION_HANDLERS_HISTORY[-1],
             }
         )
-

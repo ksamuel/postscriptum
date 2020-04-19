@@ -3,7 +3,8 @@ import webbrowser
 import nox
 
 # TODO: @nox.parametrize on ordered set
-@nox.session(python=["3.6", "3.7", "3.8", "pypy3"])
+# TODO: add pypy support
+@nox.session(python=["3.6", "3.7", "3.8"])
 def tests(session):
     session.install(".")
     session.install("pytest==5.4.1")

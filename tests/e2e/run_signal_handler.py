@@ -9,5 +9,5 @@ def handler(code, frame, previous_handler):  # pylint: disable-all
 
 original_python_handlers = register_signals_handler(handler, ["SIGINT", "SIGBREAK"])
 
-for x in range(10):
+for x in range(50):
     time.sleep(0.1)

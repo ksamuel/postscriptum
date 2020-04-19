@@ -1,12 +1,12 @@
-"""Postscriptum: an intuitive and unified API to run code when Python exit
+"""Postscriptum: an unified API to run code when Python exits
 
 Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and
 ``signal.signal`` to lets you do:
 
 ::
 
-    import postscriptum
-    watch = postscriptum.setup() # do this before creating a thread or a process
+    from postscriptum import EventWatcher
+    watch = EventWatcher() # do this before creating a thread or a process
 
     @watch.on_finish() # don't forget the parenthesis !
     def _(context):
@@ -19,6 +19,8 @@ Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and
     @watch.on_crash()
     def _(context): # context contains the exception and traceback
         print("When there is an unhandled exception")
+
+    watch.start()
 
 All those functions will be called automatically at the proper moment.
 The handler for ``on_finish`` will be called even if another handler
@@ -33,7 +35,7 @@ If the same function is used for several events:
     def t(context):
         print('woot!')
 
-It will be called only once.
+It will be called only once, on the earliest event.
 
 If several functions are used as handlers for the same event:
 
@@ -76,6 +78,8 @@ Or as a context manager:
 
     with watch():
         do_stuff()
+
+In that case, don't call ``watch.start()``, it is done for you.
 
 
 All decorators are stackable. If you use other decorators than the ones
@@ -144,15 +148,29 @@ Currently, postscriptum does not provide hooks for
 """
 
 import atexit
+import signal
 
 from functools import wraps
 
-from typing import Callable, Set, Dict, Type, Any
-from types import TracebackType
+from typing import Set, Type
+from types import TracebackType, FrameType
 
 from ordered_set import OrderedSet
 
-from postscriptum.types import EventWatcherHandlerType
+from postscriptum.types import (
+    SignalHandlerType,
+    ExceptionHandlerType,
+    TerminateHandlerType,
+    QuitHandlerType,
+    CrashHandlerType,
+    FinishHandlerType,
+    EventWatcherHandlerType,
+    TerminateHandlerContextType,
+    CrashHandlerContextType,
+    QuitHandlerContextType,
+    EventWatcherHandlerContextType,
+)
+
 from postscriptum.system_exit import catch_system_exit
 from postscriptum.excepthook import (
     register_exception_handler,
@@ -175,7 +193,6 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 # TODO: improve error messages
 # TODO: e2e on decorators
 # TODO: test on azur cloud
-# TODO: check we can do the ctrl + c confirm
 # TODO: create an "examples" directory
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
 # TODO: threading excepthook: threading.excepthook()
@@ -190,6 +207,9 @@ class EventWatcher:
 
     """
 
+    # TODO: rename hold_exit_on_quit
+    # TODO: rename hold_exit_on_crash
+    # TODO: rename hold_exit_on_terminate
     def __init__(
         self,
         call_previous_exception_handler: bool = True,
@@ -202,16 +222,16 @@ class EventWatcher:
         self.call_previous_exception_handlers = call_previous_exception_handler
 
         # Always called
-        self.finish_handlers: OrderedSet[EventWatcherHandlerType] = OrderedSet()
+        self.finish_handlers: OrderedSet[FinishHandlerType] = OrderedSet()
 
         # Called on SIGINT (so Ctrl + C), SIGTERM, SIGQUIT and SIGBREAK
-        self.terminate_handlers: OrderedSet[EventWatcherHandlerType] = OrderedSet()
+        self.terminate_handlers: OrderedSet[TerminateHandlerType] = OrderedSet()
 
         # Call when there is an unhandled exception
-        self.crash_handlers: OrderedSet[EventWatcherHandlerType] = OrderedSet()
+        self.crash_handlers: OrderedSet[CrashHandlerType] = OrderedSet()
 
         # Call on sys.exit and manual raise of SystemExit
-        self.quit_handlers: OrderedSet[EventWatcherHandlerType] = OrderedSet()
+        self.quit_handlers: OrderedSet[QuitHandlerType] = OrderedSet()
 
         # A set of already called handlers to avoid
         # duplicate calls
@@ -263,7 +283,7 @@ class EventWatcher:
 
         self._started = True
 
-    def stop(self,):
+    def stop(self):
 
         restore_previous_exception_handler()
         restore_previous_signals_handlers(PROCESS_TERMINATING_SIGNAL)
@@ -272,13 +292,15 @@ class EventWatcher:
 
         self._started = False
 
-    def _call_handler(self, handler: EventWatcherHandlerType, context: dict):
+    def _call_handler(
+        self, handler: EventWatcherHandlerType, context: EventWatcherHandlerContextType
+    ):
         if handler not in self._called_handlers:
             self._called_handlers.add(handler)
-            return handler(context)
+            return handler(context)  # type: ignore
         return None
 
-    def _call_finish_handlers(self, context: dict = None):
+    def _call_finish_handlers(self, context: EventWatcherHandlerContextType = None):
         for handler in self.finish_handlers:
             self._call_handler(handler, context or {})
         self._called_handlers = set()
@@ -287,27 +309,34 @@ class EventWatcher:
         self,
         type_: Type[Exception],
         exception: Exception,
-        traceback,
-        previous_handler: Callable,
+        traceback: TracebackType,
+        previous_handler: ExceptionHandlerType,
     ):
-        context: Dict[str, Any] = {}
-        context["exception_type"] = type_
-        context["exception_value"] = exception
-        context["exception_traceback"] = traceback
-        context["previous_exception_handler"] = previous_handler
+        context: CrashHandlerContextType = {
+            "exception_type": type_,
+            "exception_value": exception,
+            "exception_traceback": traceback,
+            "previous_exception_handler": previous_handler,
+        }
 
         for handler in self.crash_handlers:
             self._call_handler(handler, context)
 
         self._call_finish_handlers(context)
 
-    def _call_terminate_handlers(self, sig, frame, previous_handler):
+        if not self.raise_again_after_quit_handlers:
+            self._called_handlers = set()
+
+    def _call_terminate_handlers(
+        self, sig: signal.Signals, frame: FrameType, previous_handler: SignalHandlerType
+    ):
         recommended_exit_code = 128 + sig
-        context = {}
-        context["signal"] = sig
-        context["signal_frame"] = frame
-        context["previous_signal_handler"] = previous_handler
-        context["recommended_exit_code"] = recommended_exit_code
+        context: TerminateHandlerContextType = {
+            "signal": sig,
+            "signal_frame": frame,
+            "previous_signal_handler": previous_handler,
+            "recommended_exit_code": recommended_exit_code,
+        }
 
         for handler in self.terminate_handlers:
             self._call_handler(handler, context)
@@ -324,20 +353,19 @@ class EventWatcher:
     def _call_quit_handlers(
         self, type_: Type[SystemExit], exception: SystemExit, traceback: TracebackType
     ):
-        context = {}
-        context["exit_code"] = exception.code
+        context: QuitHandlerContextType = {"exit_code": exception.code}
+
         for handler in self.quit_handlers:
             self._call_handler(handler, context)
         self._call_finish_handlers(context)
 
     def __call__(self) -> catch_system_exit:
-        @wraps(self.stop)
-        def exit_handler_wrapper(*args, **kwargs):
-            self.stop()
+        def enter_handler(*args, **kwargs):
+            if not self.started:
+                self.start()
 
         return catch_system_exit(
-            self._call_quit_handlers,
-            self.start,
-            exit_handler_wrapper,
+            on_system_exit=self._call_quit_handlers,
+            on_enter=self.start,
             raise_again=self.raise_again_after_quit_handlers,
         )
