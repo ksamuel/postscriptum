@@ -9,7 +9,7 @@ import pytest
 from postscriptum.watcher import EventWatcher, PROCESS_TERMINATING_SIGNAL
 from postscriptum.signals import signals_from_names, SIGNAL_HANDLERS_HISTORY
 from postscriptum.excepthook import EXCEPTION_HANDLERS_HISTORY
-from postscriptum.exceptions import ExitFromSignal
+from postscriptum.exceptions import PostScriptumExit
 
 
 def test_watcher_context_decorator():
@@ -119,27 +119,31 @@ def test_terminate_handler(subtests):
     watch.terminate_handlers.add(signal_handler)
 
     with watch():
+
         previous_signals = {}
         for sig in signals_from_names(PROCESS_TERMINATING_SIGNAL):
 
             with subtests.test(msg="Test each signal handler", signal=sig):
+
+                watch.reset()
 
                 handler = signal.getsignal(sig)
                 assert (
                     signal.getsignal(sig).__wrapped__ == watch._call_terminate_handlers
                 ), "Watcher signal handler should the handler for this signal"
 
-                with pytest.raises(ExitFromSignal):
+                with pytest.raises(PostScriptumExit):
                     handler(sig, fake_frame)
 
                 signal_handler._called_handlers = set()
                 previous_signals[sig] = SIGNAL_HANDLERS_HISTORY[sig][-1]
+
                 assert signal_handler.call_args == call(
                     {
                         "signal": sig,
                         "signal_frame": fake_frame,
                         "previous_signal_handler": previous_signals[sig],
-                        "recommended_exit_code": sig + 128,
+                        "exit": signal_handler.call_args[0][0]["exit"],
                     }
                 ), "Our handler should be called with the signal context"
 
@@ -188,7 +192,7 @@ def test_quit_handler():
             raise SystemExit(1)
 
     assert quit_handler.call_args == call(
-        {"exit_code": 1}
+        {"exit_code": 1, "exit": quit_handler.call_args[0][0]["exit"]}
     ), "Handler should be called for SystemExit"
 
     watch = EventWatcher()
@@ -199,7 +203,7 @@ def test_quit_handler():
         def _(context):
             pass
 
-    watch = EventWatcher(raise_again_after_quit_handlers=False)
+    watch = EventWatcher(exit_after_quit_handlers=False)
 
     @watch.on_quit()
     def _(context):
@@ -209,7 +213,7 @@ def test_quit_handler():
         raise sys.exit(2)
 
     assert quit_handler.call_args == call(
-        {"exit_code": 2}
+        {"exit_code": 2, "exit": quit_handler.call_args[0][0]["exit"]}
     ), "Handler should be called for sys.exit()"
 
 

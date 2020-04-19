@@ -5,7 +5,7 @@ from types import TracebackType
 from contextlib import ContextDecorator
 
 from postscriptum.types import ExceptionHandlerType
-from postscriptum.exceptions import ExitFromSignal
+from postscriptum.exceptions import PostScriptumExit
 
 
 class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
@@ -61,7 +61,7 @@ class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
         traceback: TracebackType,
     ) -> bool:
 
-        received_signal = isinstance(exception_value, ExitFromSignal)
+        received_signal = isinstance(exception_value, PostScriptumExit)
         received_quit = isinstance(exception_value, SystemExit)
         if received_quit and not received_signal:
             self.on_system_exit(

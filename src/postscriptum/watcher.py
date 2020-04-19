@@ -150,10 +150,12 @@ Currently, postscriptum does not provide hooks for
 import atexit
 import signal
 
-from functools import wraps
+from functools import partial
 
-from typing import Set, Type
+from typing import Set, Type, Callable
 from types import TracebackType, FrameType
+
+from typing_extensions import NoReturn
 
 from ordered_set import OrderedSet
 
@@ -164,11 +166,14 @@ from postscriptum.types import (
     QuitHandlerType,
     CrashHandlerType,
     FinishHandlerType,
-    EventWatcherHandlerType,
-    TerminateHandlerContextType,
-    CrashHandlerContextType,
-    QuitHandlerContextType,
-    EventWatcherHandlerContextType,
+    HoldHandlerType,
+    AlwaysHandlerType,
+    EventHandlerType,
+    EventContextTypeVar,
+    TerminateContextType,
+    CrashContextType,
+    QuitContextType,
+    EventContextType,
 )
 
 from postscriptum.system_exit import catch_system_exit
@@ -180,11 +185,14 @@ from postscriptum.signals import (
     register_signals_handler,
     restore_previous_signals_handlers,
 )
-from postscriptum.exceptions import ExitFromSignal
+from postscriptum.exceptions import PostScriptumExit
 from postscriptum.utils import create_handler_decorator
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
+# TODO: change context to be classes
+# TODO: loop.add_signal_handler for asyncio, see: https://gist.github.com/nvgoldin/30cea3c04ee0796ebd0489aa62bcf00a
+# TODO: check if main thread
 # TODO: test if one can call sys.exit() in a terminate handler
 # TODO: test if on can reraise from a quit handler
 # TODO: check if one can avoid exciting from an exception handler and then exit manually
@@ -207,21 +215,18 @@ class EventWatcher:
 
     """
 
-    # TODO: rename hold_exit_on_quit
-    # TODO: rename hold_exit_on_crash
-    # TODO: rename hold_exit_on_terminate
     def __init__(
         self,
         call_previous_exception_handler: bool = True,
         exit_after_terminate_handlers: bool = True,
-        raise_again_after_quit_handlers: bool = True,
+        exit_after_quit_handlers: bool = True,
     ):
 
-        self.raise_again_after_quit_handlers = raise_again_after_quit_handlers
+        self.exit_after_quit_handlers = exit_after_quit_handlers
         self.exit_after_terminate_handlers = exit_after_terminate_handlers
         self.call_previous_exception_handlers = call_previous_exception_handler
 
-        # Always called
+        # Called when terminate, crash or quit results in an exit
         self.finish_handlers: OrderedSet[FinishHandlerType] = OrderedSet()
 
         # Called on SIGINT (so Ctrl + C), SIGTERM, SIGQUIT and SIGBREAK
@@ -233,9 +238,15 @@ class EventWatcher:
         # Call on sys.exit and manual raise of SystemExit
         self.quit_handlers: OrderedSet[QuitHandlerType] = OrderedSet()
 
+        # Always called
+        self.always_handlers: OrderedSet[AlwaysHandlerType] = OrderedSet()
+
+        # Called when the user chose to abort the exit
+        self.hold_handlers: OrderedSet[HoldHandlerType] = OrderedSet()
+
         # A set of already called handlers to avoid
         # duplicate calls
-        self._called_handlers: Set[EventWatcherHandlerType] = set()
+        self._called_handlers: Set[EventHandlerType] = set()
 
         # We use this to avoid registering handlers twice
         self._started = False
@@ -259,16 +270,24 @@ class EventWatcher:
     def on_crash(self, func=None):
         return create_handler_decorator(func, self.crash_handlers.add, "on_crash")
 
+    def on_hold(self, func=None):
+        return create_handler_decorator(func, self.hold_handlers.add, "on_hold")
+
+    def always(self, func=None):
+        return create_handler_decorator(func, self.always_handlers.add, "always")
+
     def start(self):
 
         if self.started:
             self.stop()
             raise RuntimeError(
                 "Event handlers are already registered, call stop() before "
-                "calling start() again."
+                "calling start() again. Remember start() is automatically "
+                "called if you used the EventWatcher() as a context manager "
+                "or a decorator."
             )
 
-        self._called_handlers = set()
+        self.reset()
 
         register_exception_handler(
             self._call_crash_handlers,
@@ -292,18 +311,42 @@ class EventWatcher:
 
         self._started = False
 
+    def reset(self):
+        self._called_handlers = set()
+
+    def force_exit(self, exit_code) -> NoReturn:
+        raise PostScriptumExit(exit_code)
+
+    def _finish(self, context):
+        self._call_finish_handlers(context)
+        self._call_always_handlers(context)
+
+    def _hold(self, context):
+        self._call_hold_handlers(context)
+        self._call_always_handlers(context)
+        self.reset()
+
     def _call_handler(
-        self, handler: EventWatcherHandlerType, context: EventWatcherHandlerContextType
+        self,
+        handler: Callable[[EventContextTypeVar], None],
+        context: EventContextTypeVar,
     ):
         if handler not in self._called_handlers:
             self._called_handlers.add(handler)
-            return handler(context)  # type: ignore
+            return handler(context)
         return None
 
-    def _call_finish_handlers(self, context: EventWatcherHandlerContextType = None):
+    def _call_finish_handlers(self, context: EventContextType = None):
         for handler in self.finish_handlers:
             self._call_handler(handler, context or {})
-        self._called_handlers = set()
+
+    def _call_always_handlers(self, context: EventContextType = None):
+        for handler in self.always_handlers:
+            self._call_handler(handler, context or {})
+
+    def _call_hold_handlers(self, context: EventContextType = None):
+        for handler in self.hold_handlers:
+            self._call_handler(handler, context or {})
 
     def _call_crash_handlers(
         self,
@@ -312,7 +355,7 @@ class EventWatcher:
         traceback: TracebackType,
         previous_handler: ExceptionHandlerType,
     ):
-        context: CrashHandlerContextType = {
+        context: CrashContextType = {
             "exception_type": type_,
             "exception_value": exception,
             "exception_traceback": traceback,
@@ -322,50 +365,62 @@ class EventWatcher:
         for handler in self.crash_handlers:
             self._call_handler(handler, context)
 
-        self._call_finish_handlers(context)
-
-        if not self.raise_again_after_quit_handlers:
-            self._called_handlers = set()
+        self._finish(context)
 
     def _call_terminate_handlers(
         self, sig: signal.Signals, frame: FrameType, previous_handler: SignalHandlerType
     ):
         recommended_exit_code = 128 + sig
-        context: TerminateHandlerContextType = {
+        context: TerminateContextType = {
             "signal": sig,
             "signal_frame": frame,
             "previous_signal_handler": previous_handler,
-            "recommended_exit_code": recommended_exit_code,
+            "exit": partial(self.force_exit, exit_code=recommended_exit_code),
         }
-
-        for handler in self.terminate_handlers:
-            self._call_handler(handler, context)
 
         # TODO: check manual exit
         # TODO: check that a custom exit will trigger finish anyway
-        if self.exit_after_terminate_handlers:
-            self._call_finish_handlers(context)
-            raise ExitFromSignal(recommended_exit_code)
 
-        self._called_handlers = set()
+        try:
+            for handler in self.terminate_handlers:
+                self._call_handler(handler, context)
+        except PostScriptumExit:
+            self._finish(context)
+            raise
+
+        # If we are here, this means no handler called exit(),
+        if self.exit_after_terminate_handlers:
+            self._finish(context)
+            self.force_exit(recommended_exit_code)
+        else:
+            self._hold(context)
 
     # TODO: test reraise from there
     def _call_quit_handlers(
         self, type_: Type[SystemExit], exception: SystemExit, traceback: TracebackType
     ):
-        context: QuitHandlerContextType = {"exit_code": exception.code}
+        context: QuitContextType = {
+            "exit_code": exception.code,
+            "exit": partial(self.force_exit, exit_code=exception.code),
+        }
 
-        for handler in self.quit_handlers:
-            self._call_handler(handler, context)
-        self._call_finish_handlers(context)
+        try:
+            for handler in self.quit_handlers:
+                self._call_handler(handler, context)
+        except PostScriptumExit:
+            self._finish(context)
+            raise
+
+        # If we are here, this means no handler called exit(),
+        if self.exit_after_quit_handlers:
+            self._finish(context)
+        else:
+            self._hold(context)
 
     def __call__(self) -> catch_system_exit:
-        def enter_handler(*args, **kwargs):
-            if not self.started:
-                self.start()
 
         return catch_system_exit(
             on_system_exit=self._call_quit_handlers,
             on_enter=self.start,
-            raise_again=self.raise_again_after_quit_handlers,
+            raise_again=self.exit_after_quit_handlers,
         )

@@ -3,9 +3,9 @@
 import signal
 
 from types import TracebackType, FrameType
-from typing import Callable, Type, Any, Union
+from typing import Callable, Type, Any, Union, TypeVar
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NoReturn
 
 # The callable in sys.excepthook
 ExceptionHandlerType = Callable[
@@ -28,18 +28,18 @@ SignalHandlerType = Union[
 SignalType = Union[signal.Signals, str]
 
 
-TerminateHandlerContextType = TypedDict(
-    "TerminateHandlerContextType",
+TerminateContextType = TypedDict(
+    "TerminateContextType",
     {
         "signal": signal.Signals,
         "signal_frame": FrameType,
         "previous_signal_handler": SignalHandlerType,
-        "recommended_exit_code": int,
+        "exit": Callable[[int], NoReturn],
     },
 )
 
-CrashHandlerContextType = TypedDict(
-    "CrashHandlerContextType",
+CrashContextType = TypedDict(
+    "CrashContextType",
     {
         "exception_type": Type[Exception],
         "exception_value": Exception,
@@ -48,25 +48,43 @@ CrashHandlerContextType = TypedDict(
     },
 )
 
-QuitHandlerContextType = TypedDict("QuitHandlerContextType", {"exit_code": int,})
+QuitContextType = TypedDict(
+    "QuitContextType", {"exit_code": int, "exit": Callable[[int], NoReturn],}
+)
 
 EmptyContextType = TypedDict("EmptyContextType", {})
 
-EventWatcherHandlerContextType = Union[
-    EmptyContextType,
-    TerminateHandlerContextType,
-    QuitHandlerContextType,
-    CrashHandlerContextType,
+EventContextType = Union[
+    EmptyContextType, TerminateContextType, QuitContextType, CrashContextType,
 ]
 
 
-TerminateHandlerType = Callable[[TerminateHandlerContextType], None]
-QuitHandlerType = Callable[[QuitHandlerContextType], None]
-CrashHandlerType = Callable[[CrashHandlerContextType], None]
+TerminateHandlerType = Callable[[TerminateContextType], None]
+QuitHandlerType = Callable[[QuitContextType], None]
+CrashHandlerType = Callable[[CrashContextType], None]
 FinishHandlerType = Callable[
-    [EventWatcherHandlerContextType], None,
+    [EventContextType], None,
+]
+AlwaysHandlerType = Callable[
+    [EventContextType], None,
+]
+HoldHandlerType = Callable[
+    [EventContextType], None,
 ]
 
-EventWatcherHandlerType = Union[
-    TerminateHandlerType, QuitHandlerType, CrashHandlerType, FinishHandlerType
+EventHandlerType = Union[
+    TerminateHandlerType,
+    QuitHandlerType,
+    CrashHandlerType,
+    FinishHandlerType,
+    AlwaysHandlerType,
+    HoldHandlerType,
 ]
+
+EventContextTypeVar = TypeVar(
+    "EventContextTypeVar",
+    EmptyContextType,
+    TerminateContextType,
+    QuitContextType,
+    CrashContextType,
+)
