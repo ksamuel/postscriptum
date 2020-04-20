@@ -18,7 +18,7 @@ def test_watcher_context_decorator():
     context_decorator = ps()
 
     assert context_decorator.on_enter == ps.start
-    assert context_decorator.on_system_exit == ps._call_quit_handlers
+    assert context_decorator.on_system_exit == ps._handle_quit
 
     with patch.object(ps, "reset") as mock:
         ps.start()
@@ -42,14 +42,14 @@ def test_finish_handler():
     with patch("atexit.register") as mock:
         ps.start()
 
-    mock.assert_called_once_with(ps._finish)
+    mock.assert_called_once_with(ps._handle_finish)
 
     with patch("atexit.unregister") as mock:
         ps.stop()
 
-    mock.assert_called_once_with(ps._finish)
+    mock.assert_called_once_with(ps._handle_finish)
 
-    ps._finish()
+    ps._handle_finish()
 
     finish_handler.assert_called_once()
 
@@ -82,7 +82,7 @@ def test_crash_handler():
     with ps():
 
         assert (
-            sys.excepthook.__wrapped__ == ps._call_crash_handlers
+            sys.excepthook.__wrapped__ == ps._handle_crash
         ), "Start set the excepthook"
 
         sys.excepthook(Exception, fake_exception, fake_traceback)
@@ -134,7 +134,7 @@ def test_terminate_handler(subtests):
 
                 handler = signal.getsignal(sig)
                 assert (
-                    signal.getsignal(sig).__wrapped__ == ps._call_terminate_handlers
+                    signal.getsignal(sig).__wrapped__ == ps._handle_terminate
                 ), "The PubSub signal handler should the handler for this signal"
 
                 with pytest.raises(PubSubExit):

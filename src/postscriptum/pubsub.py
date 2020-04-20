@@ -157,8 +157,6 @@ from types import TracebackType, FrameType
 
 from typing_extensions import NoReturn
 
-from ordered_set import OrderedSet
-
 from postscriptum.types import (
     SignalHandlerType,
     ExceptionHandlerType,
@@ -216,8 +214,8 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
 class PubSub:
     """
-        A registry containing/attaching handlers to the various exit scenarios
-
+        A Registry+Observer pattern for containing/attaching handlers
+        to the various exit scenarios
     """
 
     def __init__(
@@ -231,31 +229,21 @@ class PubSub:
         self.exit_after_terminate_handlers = exit_after_terminate_handlers
         self.call_previous_exception_handlers = call_previous_exception_handler
 
-        # ignoring type is here necessary because of a bug in mypy:
-        # https://github.com/python/mypy/issues/3283
-
         # Called when terminate, crash or quit results in an exit
-        self.finish_handlers: OrderedSetType[FinishHandlerType] = OrderedSet()  # type: ignore
-
+        self.finish_handlers = OrderedSetType[FinishHandlerType]()
         # Called on SIGINT (so Ctrl + C), SIGTERM, SIGQUIT and SIGBREAK
-        self.terminate_handlers: OrderedSetType[TerminateHandlerType] = OrderedSet()  # type: ignore
-
+        self.terminate_handlers = OrderedSetType[TerminateHandlerType]()
         # Call when there is an unhandled exception
-        self.crash_handlers: OrderedSetType[CrashHandlerType] = OrderedSet()
-
+        self.crash_handlers = OrderedSetType[CrashHandlerType]()
         # Call on sys.exit and manual raise of SystemExit
-        self.quit_handlers: OrderedSetType[QuitHandlerType] = OrderedSet()  # type: ignore
-
+        self.quit_handlers = OrderedSetType[QuitHandlerType]()
         # Always called
-        self.always_handlers: OrderedSetType[AlwaysHandlerType] = OrderedSet()  # type: ignore
+        self.always_handlers = OrderedSetType[AlwaysHandlerType]()
+        # Called when the user chose to abort exit
+        self.hold_handlers = OrderedSetType[HoldHandlerType]()
 
-        # Called when the user chose to abort the exit
-        self.hold_handlers: OrderedSetType[HoldHandlerType] = OrderedSet()  # type: ignore
-
-        # A set of already called handlers to avoid
-        # duplicate calls
+        # A set of already called handlers to avoid duplicate calls
         self._called_handlers: Set[EventHandlerType] = set()  # type: ignore
-
         # We use this to avoid registering handlers twice
         self._started = False
 
@@ -292,15 +280,11 @@ class PubSub:
         self.reset()
 
         register_exception_handler(
-            self._call_crash_handlers,
+            self._handle_crash,
             call_previous_handler=self.call_previous_exception_handlers,
         )
-
-        register_signals_handler(
-            self._call_terminate_handlers, PROCESS_TERMINATING_SIGNAL
-        )
-
-        atexit.register(self._finish)
+        register_signals_handler(self._handle_terminate, PROCESS_TERMINATING_SIGNAL)
+        atexit.register(self._handle_finish)
 
         self._started = True
 
@@ -311,7 +295,8 @@ class PubSub:
 
         restore_previous_exception_handler()
         restore_previous_signals_handlers(PROCESS_TERMINATING_SIGNAL)
-        atexit.unregister(self._finish)
+        atexit.unregister(self._handle_finish)
+
         self._started = False
 
     def reset(self):
@@ -320,15 +305,6 @@ class PubSub:
     @staticmethod
     def force_exit(exit_code) -> NoReturn:
         raise PubSubExit(exit_code)
-
-    def _finish(self, context: EventContextType = None):
-        self._call_handlers(self.finish_handlers, context or {})
-        self._call_handlers(self.always_handlers, context or {})
-
-    def _hold(self, context: EventContextType = None):
-        self._call_handlers(self.hold_handlers, context or {})
-        self._call_handlers(self.always_handlers, context or {})
-        self.reset()
 
     def _call_handlers(
         self,
@@ -340,7 +316,16 @@ class PubSub:
                 self._called_handlers.add(handler)
                 handler(context)
 
-    def _call_crash_handlers(
+    def _handle_finish(self, context: EventContextType = None):
+        self._call_handlers(self.finish_handlers, context or {})
+        self._call_handlers(self.always_handlers, context or {})
+
+    def _handle_hold(self, context: EventContextType = None):
+        self._call_handlers(self.hold_handlers, context or {})
+        self._call_handlers(self.always_handlers, context or {})
+        self.reset()
+
+    def _handle_crash(
         self,
         type_: Type[Exception],
         exception: Exception,
@@ -355,9 +340,9 @@ class PubSub:
         }
 
         self._call_handlers(self.crash_handlers, context)
-        self._finish(context)
+        self._handle_finish(context)
 
-    def _call_terminate_handlers(
+    def _handle_terminate(
         self, sig: signal.Signals, frame: FrameType, previous_handler: SignalHandlerType
     ):
         recommended_exit_code = 128 + sig
@@ -374,18 +359,18 @@ class PubSub:
         try:
             self._call_handlers(self.terminate_handlers, context)
         except PubSubExit:
-            self._finish(context)
+            self._handle_finish(context)
             raise
 
         # If we are here, this means no handler called exit(),
         if self.exit_after_terminate_handlers:
-            self._finish(context)
+            self._handle_finish(context)
             self.force_exit(recommended_exit_code)
         else:
-            self._hold(context)
+            self._handle_hold(context)
 
     # TODO: test reraise from there
-    def _call_quit_handlers(
+    def _handle_quit(
         self, type_: Type[SystemExit], exception: SystemExit, traceback: TracebackType
     ):
         context: QuitContextType = {
@@ -396,19 +381,19 @@ class PubSub:
         try:
             self._call_handlers(self.quit_handlers, context)
         except PubSubExit:
-            self._finish(context)
+            self._handle_finish(context)
             raise
 
         # If we are here, this means no handler called exit(),
         if self.exit_after_quit_handlers:
-            self._finish(context)
+            self._handle_finish(context)
         else:
-            self._hold(context)
+            self._handle_hold(context)
 
     def __call__(self) -> catch_system_exit:
 
         return catch_system_exit(
-            on_system_exit=self._call_quit_handlers,
+            on_system_exit=self._handle_quit,
             on_enter=self.start,
             raise_again=self.exit_after_quit_handlers,
         )
