@@ -13,15 +13,15 @@ Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and ``signal.signal``
     ps = PubSub() # do this before creating a thread or a process
 
     @ps.on_finish() # don't forget the parenthesis !
-    def _(context):
+    def _(event):
         print("When the program finishes, no matter the reason.")
 
     @ps.on_terminate()
-    def _(context):  # context contains the signal that lead to termination
+    def _(event):  # context contains the signal that lead to termination
         print("When the user terminates the program. E.G: Ctrl + C, kill -9, etc.")
 
     @ps.on_crash()
-    def _(context): # context contains the exception and traceback
+    def _(event): # context contains the exception and traceback
         print("When there is an unhandled exception")
 
     ps.start()
@@ -48,7 +48,7 @@ Why this lib ?
 Python has 3 very different API to deal with exiting, and they all have their challenges:
 
 - **atexit**: the handler is always called, weither python exited cleanly or not, which can lead do duplicated calls. Except if you get a SIGTERM signal when it's silently ignored. Even whell called, it doesn't give any information on the cause of the exit.
-- **signal**: to capture terminating signals, you need to know which ones to watch for (and they differ depending of the OS). Normal behavior is to exit, but if you set your handler, the program will not exit unless you call sys.exit(). Finally, you can only have one handler for each signal.
+- **signal**: to capture terminating signals, you need to know which ones to watch for (and they differ depending of the OS). Normal behavior is to exit, but if you set your handler, the program will not exit unless you call sys.exit(). What's more, you can only have one handler for each signal. Finally, there are gotchas when using I/O inside a handler.
 - **sys.excepthool** is called on all exception, but not SystemExit. It also leads to hard to debug errors if you don't call the previous hook properly. And you can have only one handler.
 
 Also, there is no automatic way to react to ``sys.exit()``. And no way to distinguish ``SystemExit`` from ``sys.exit()``, which you need for signals.

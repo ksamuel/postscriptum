@@ -89,9 +89,9 @@ def test_crash_handler():
 
         crash_handler.assert_called_once_with(
             {
-                "exception_type": Exception,
-                "exception_value": fake_exception,
-                "exception_traceback": fake_traceback,
+                "exception": fake_exception,
+                "traceback": fake_traceback,
+                "stacktrace": crash_handler.call_args[0][0]["stacktrace"],
                 "previous_exception_handler": EXCEPTION_HANDLERS_HISTORY[-1],
             }
         )
@@ -160,7 +160,7 @@ def test_terminate_handler(subtests):
                 sig
             ), "Signal should be restored to its previous value"
 
-    ps = PubSub(exit_after_terminate_handlers=False)
+    ps = PubSub(exit_on_terminate=False)
 
     with ps():
 
@@ -205,14 +205,14 @@ def test_quit_handler():
     with pytest.raises(AssertionError):
 
         @ps.on_quit
-        def _(context):
+        def _(event):
             pass
 
     ps = PubSub(exit_after_quit_handlers=False)
 
     @ps.on_quit()
-    def _(context):
-        quit_handler(context)
+    def _(event):
+        quit_handler(event)
 
     with ps():
         raise sys.exit(2)
@@ -236,9 +236,9 @@ def test_handlers_are_not_called_twice():
         sys.excepthook(Exception, fake_exception, fake_traceback)
         handler.assert_called_once_with(
             {
-                "exception_type": Exception,
-                "exception_value": fake_exception,
-                "exception_traceback": fake_traceback,
+                "exception": fake_exception,
+                "traceback": fake_traceback,
+                "stacktrace": handler.call_args[0][0]["stacktrace"],
                 "previous_exception_handler": EXCEPTION_HANDLERS_HISTORY[-1],
             }
         )

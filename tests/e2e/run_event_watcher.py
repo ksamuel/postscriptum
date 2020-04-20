@@ -8,22 +8,22 @@ ps = PubSub()
 
 
 @ps.on_terminate()
-def _(context):  # type: ignore
+def _(event):  # type: ignore
     print("terminated")
 
 
 @ps.on_crash() # type: ignore
-def _(context):
+def _(event):
     print("crashed")
 
 
 @ps.on_quit() # type: ignore
-def _(context):
+def _(event):
     print("quitted")
 
 
 @ps.on_finish() # type: ignore
-def _(context):
+def _(event):
     print("finished")
 
 

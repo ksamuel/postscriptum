@@ -1,6 +1,10 @@
 import sys
 
-from typing import Callable
+from typing import Callable, Type
+from types import TracebackType
+
+from traceback import format_exception
+
 from typing_extensions import NoReturn
 
 from postscriptum.exceptions import PubSubExit
@@ -25,5 +29,11 @@ def create_handler_decorator(func: Callable, add_handler: Callable, name: str):
     return decorator
 
 
-def force_exit(exit_code) -> NoReturn:
-    raise PubSubExit(exit_code)
+def force_exit(code) -> NoReturn:
+    raise PubSubExit(code)
+
+
+def format_stacktrace(
+    type_: Type[Exception], exception: Exception, traceback: TracebackType
+) -> str:
+    return "\n".join(format_exception(type_, exception, traceback))

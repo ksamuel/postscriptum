@@ -8,7 +8,7 @@ from postscriptum.system_exit import catch_system_exit
 from postscriptum.exceptions import PubSubExit
 
 
-def catcher(exception_type, exception_value, traceback):
+def catcher(exception_type, exception, traceback):
     pass
 
 

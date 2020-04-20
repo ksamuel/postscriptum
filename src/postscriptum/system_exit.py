@@ -21,7 +21,7 @@ class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
 
     Example:
 
-            def callback(exception_type, exception_value, traceback):
+            def callback(exception_type, exception, traceback):
                 print("I will be called on sys.exit() or raise SystemExit")
 
             # This prints, then exit.
@@ -57,19 +57,19 @@ class catch_system_exit(ContextDecorator):  # pylint: disable=invalid-name
     def __exit__(
         self,
         exception_type: Type[Exception],
-        exception_value: Exception,
+        exception: Exception,
         traceback: TracebackType,
     ) -> bool:
 
-        received_signal = isinstance(exception_value, PubSubExit)
-        received_quit = isinstance(exception_value, SystemExit)
+        received_signal = isinstance(exception, PubSubExit)
+        received_quit = isinstance(exception, SystemExit)
         if received_quit and not received_signal:
             self.on_system_exit(
                 cast(Type[SystemExit], exception_type),
-                cast(SystemExit, exception_value),
+                cast(SystemExit, exception),
                 traceback,
             )
         elif self.on_exit:
-            self.on_exit(exception_type, exception_value, traceback)
+            self.on_exit(exception_type, exception, traceback)
 
         return not self.raise_again

@@ -30,8 +30,8 @@ SignalHandlerType = Union[
 SignalType = Union[signal.Signals, str]
 
 
-TerminateContextType = TypedDict(
-    "TerminateContextType",
+TerminateEventType = TypedDict(
+    "TerminateEventType",
     {
         "signal": signal.Signals,
         "signal_frame": FrameType,
@@ -40,38 +40,38 @@ TerminateContextType = TypedDict(
     },
 )
 
-CrashContextType = TypedDict(
-    "CrashContextType",
+CrashEventType = TypedDict(
+    "CrashEventType",
     {
-        "exception_type": Type[Exception],
-        "exception_value": Exception,
-        "exception_traceback": TracebackType,
+        "exception": Exception,
+        "stacktrace": Callable[[Type[Exception], Exception, TracebackType], str],
+        "traceback": TracebackType,
         "previous_exception_handler": ExceptionHandlerType,
     },
 )
 
-QuitContextType = TypedDict(
-    "QuitContextType", {"exit_code": int, "exit": Callable[[int], NoReturn],}
+QuitEventType = TypedDict(
+    "QuitEventType", {"exit_code": int, "exit": Callable[[int], NoReturn],}
 )
 
-EmptyContextType = TypedDict("EmptyContextType", {})
+EmptyEventType = TypedDict("EmptyEventType", {})
 
-EventContextType = Union[
-    EmptyContextType, TerminateContextType, QuitContextType, CrashContextType,
+EventType = Union[
+    EmptyEventType, TerminateEventType, QuitEventType, CrashEventType,
 ]
 
 
-TerminateHandlerType = Callable[[TerminateContextType], None]
-QuitHandlerType = Callable[[QuitContextType], None]
-CrashHandlerType = Callable[[CrashContextType], None]
+TerminateHandlerType = Callable[[TerminateEventType], None]
+QuitHandlerType = Callable[[QuitEventType], None]
+CrashHandlerType = Callable[[CrashEventType], None]
 FinishHandlerType = Callable[
-    [EventContextType], None,
+    [EventType], None,
 ]
 AlwaysHandlerType = Callable[
-    [EventContextType], None,
+    [EventType], None,
 ]
 HoldHandlerType = Callable[
-    [EventContextType], None,
+    [EventType], None,
 ]
 
 EventHandlerType = Union[
@@ -83,12 +83,8 @@ EventHandlerType = Union[
     HoldHandlerType,
 ]
 
-EventContextTypeVar = TypeVar(
-    "EventContextTypeVar",
-    EmptyContextType,
-    TerminateContextType,
-    QuitContextType,
-    CrashContextType,
+EventTypeVar = TypeVar(
+    "EventTypeVar", EmptyEventType, TerminateEventType, QuitEventType, CrashEventType,
 )
 
 

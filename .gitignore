@@ -10,3 +10,4 @@ build
 .nox
 .coverage
 htmlcov
+*.log
