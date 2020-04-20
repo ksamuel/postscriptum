@@ -1,6 +1,9 @@
 import sys
 
 from typing import Callable
+from typing_extensions import NoReturn
+
+from postscriptum.exceptions import PubSubExit
 
 
 IS_WINDOWS = sys.platform.startswith("win")
@@ -20,3 +23,7 @@ def create_handler_decorator(func: Callable, add_handler: Callable, name: str):
         return func
 
     return decorator
+
+
+def force_exit(exit_code) -> NoReturn:
+    raise PubSubExit(exit_code)

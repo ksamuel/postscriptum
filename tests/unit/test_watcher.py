@@ -20,14 +20,14 @@ def test_watcher_context_decorator():
     assert context_decorator.on_enter == ps.start
     assert context_decorator.on_system_exit == ps._handle_quit
 
-    with patch.object(ps, "reset") as mock:
+    with patch.object(ps, "_called_handlers") as mock:
         ps.start()
-        mock.assert_called_once()
+        mock.clear.assert_called_once()
         assert ps.started
 
-    with patch.object(ps, "reset") as mock:
+    with patch.object(ps, "_called_handlers") as mock:
         ps.start()
-        assert not mock.call_count
+        assert not mock.clear.call_count
 
     ps.stop()
     assert not ps.started
@@ -130,7 +130,7 @@ def test_terminate_handler(subtests):
 
             with subtests.test(msg="Test each signal handler", signal=sig):
 
-                ps.reset()
+                ps._called_handlers.clear()
 
                 handler = signal.getsignal(sig)
                 assert (

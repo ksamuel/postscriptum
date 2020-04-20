@@ -113,18 +113,19 @@ For ``on_crash`` handlers:
 - **previous_exception_handler**: the callable that was the exception handler
                                  before we called setup()
 
+
 For ``on_terminate`` handlers:
 
 - **signal**: the number representing the signal that was sent to terminate the program
 - **signal_frame**: the frame state at the moment the signal arrived
 - **previous_signal_handler**: the signal handler that was set before
   we called setup()
-- **recommended_exit_code**: the polite exit code to use when exiting
-  after this signal
+- **exit**: a callable you can use to manually trigger the exit.
 
 For ``on_quit`` handlers:
 
 - **exit_code**: the code passed to ``SystemExit``/``sys.exit``.
+- **exit**: a callable you can use to manually trigger the exit.
 
 For ``on_finish`` handlers:
 
@@ -155,8 +156,6 @@ from functools import partial
 from typing import Set, Type, Callable
 from types import TracebackType, FrameType
 
-from typing_extensions import NoReturn
-
 from postscriptum.types import (
     SignalHandlerType,
     ExceptionHandlerType,
@@ -185,7 +184,7 @@ from postscriptum.signals import (
     restore_previous_signals_handlers,
 )
 from postscriptum.exceptions import PubSubExit
-from postscriptum.utils import create_handler_decorator
+from postscriptum.utils import create_handler_decorator, force_exit
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
@@ -277,7 +276,7 @@ class PubSub:
         if self.started:
             return
 
-        self.reset()
+        self._called_handlers.clear()
 
         register_exception_handler(
             self._handle_crash,
@@ -299,13 +298,6 @@ class PubSub:
 
         self._started = False
 
-    def reset(self):
-        self._called_handlers = set()
-
-    @staticmethod
-    def force_exit(exit_code) -> NoReturn:
-        raise PubSubExit(exit_code)
-
     def _call_handlers(
         self,
         handlers: OrderedSetType[Callable[[EventContextTypeVar], None]],
@@ -323,7 +315,7 @@ class PubSub:
     def _handle_hold(self, context: EventContextType = None):
         self._call_handlers(self.hold_handlers, context or {})
         self._call_handlers(self.always_handlers, context or {})
-        self.reset()
+        self._called_handlers.clear()
 
     def _handle_crash(
         self,
@@ -345,12 +337,12 @@ class PubSub:
     def _handle_terminate(
         self, sig: signal.Signals, frame: FrameType, previous_handler: SignalHandlerType
     ):
-        recommended_exit_code = 128 + sig
+        recommended_exit_code = 128 + sig  # Most POSIX shell seem to do that
         context: TerminateContextType = {
             "signal": sig,
             "signal_frame": frame,
             "previous_signal_handler": previous_handler,
-            "exit": partial(self.force_exit, exit_code=recommended_exit_code),
+            "exit": partial(force_exit, recommended_exit_code),
         }
 
         # TODO: check manual exit
@@ -358,14 +350,14 @@ class PubSub:
 
         try:
             self._call_handlers(self.terminate_handlers, context)
-        except PubSubExit:
+        except PubSubExit:  # Deal with a handler manually exiting
             self._handle_finish(context)
             raise
 
-        # If we are here, this means no handler called exit(),
+        # If were are here, no handler manually exited.
         if self.exit_after_terminate_handlers:
             self._handle_finish(context)
-            self.force_exit(recommended_exit_code)
+            force_exit(recommended_exit_code)
         else:
             self._handle_hold(context)
 
@@ -375,16 +367,17 @@ class PubSub:
     ):
         context: QuitContextType = {
             "exit_code": exception.code,
-            "exit": partial(self.force_exit, exit_code=exception.code),
+            "exit": partial(force_exit, exception.code),
         }
 
         try:
             self._call_handlers(self.quit_handlers, context)
-        except PubSubExit:
+        except PubSubExit:  # Deal with a handler manually exiting
             self._handle_finish(context)
             raise
 
-        # If we are here, this means no handler called exit(),
+        # If we are here, this means no handler manually exited.
+        # We rely on catch_system_exit to exit for us if needed.
         if self.exit_after_quit_handlers:
             self._handle_finish(context)
         else:
