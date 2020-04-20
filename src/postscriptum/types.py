@@ -3,9 +3,11 @@
 import signal
 
 from types import TracebackType, FrameType
-from typing import Callable, Type, Any, Union, TypeVar
+from typing import Callable, Type, Any, Union, TypeVar, TYPE_CHECKING
 
 from typing_extensions import TypedDict, NoReturn
+
+from ordered_set import OrderedSet
 
 # The callable in sys.excepthook
 ExceptionHandlerType = Callable[
@@ -88,3 +90,14 @@ EventContextTypeVar = TypeVar(
     QuitContextType,
     CrashContextType,
 )
+
+
+if TYPE_CHECKING:
+    OrderedSetType = OrderedSet
+else:
+
+    class _OrderedSet:
+        def __getitem__(self, *args):
+            return OrderedSet
+
+    OrderedSetType = _OrderedSet()

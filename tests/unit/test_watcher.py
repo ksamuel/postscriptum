@@ -20,11 +20,16 @@ def test_watcher_context_decorator():
     assert context_decorator.on_enter == ps.start
     assert context_decorator.on_system_exit == ps._call_quit_handlers
 
-    with pytest.raises(RuntimeError):
+    with patch.object(ps, "reset") as mock:
         ps.start()
+        mock.assert_called_once()
         assert ps.started
-        ps.start()
 
+    with patch.object(ps, "reset") as mock:
+        ps.start()
+        assert not mock.call_count
+
+    ps.stop()
     assert not ps.started
 
 
@@ -37,14 +42,14 @@ def test_finish_handler():
     with patch("atexit.register") as mock:
         ps.start()
 
-    mock.assert_called_once_with(ps._call_finish_handlers)
+    mock.assert_called_once_with(ps._finish)
 
     with patch("atexit.unregister") as mock:
         ps.stop()
 
-    mock.assert_called_once_with(ps._call_finish_handlers)
+    mock.assert_called_once_with(ps._finish)
 
-    ps._call_finish_handlers()
+    ps._finish()
 
     finish_handler.assert_called_once()
 

@@ -169,11 +169,12 @@ from postscriptum.types import (
     HoldHandlerType,
     AlwaysHandlerType,
     EventHandlerType,
+    EventContextType,
     EventContextTypeVar,
     TerminateContextType,
     CrashContextType,
     QuitContextType,
-    EventContextType,
+    OrderedSetType,
 )
 
 from postscriptum.system_exit import catch_system_exit
@@ -189,6 +190,7 @@ from postscriptum.exceptions import PubSubExit
 from postscriptum.utils import create_handler_decorator
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
+
 
 # TODO: finish end 2 end tests
 # TODO: test hold
@@ -233,22 +235,22 @@ class PubSub:
         # https://github.com/python/mypy/issues/3283
 
         # Called when terminate, crash or quit results in an exit
-        self.finish_handlers: OrderedSet[FinishHandlerType] = OrderedSet()  # type: ignore
+        self.finish_handlers: OrderedSetType[FinishHandlerType] = OrderedSet()  # type: ignore
 
         # Called on SIGINT (so Ctrl + C), SIGTERM, SIGQUIT and SIGBREAK
-        self.terminate_handlers: OrderedSet[TerminateHandlerType] = OrderedSet()  # type: ignore
+        self.terminate_handlers: OrderedSetType[TerminateHandlerType] = OrderedSet()  # type: ignore
 
         # Call when there is an unhandled exception
-        self.crash_handlers: OrderedSet[CrashHandlerType] = OrderedSet()
+        self.crash_handlers: OrderedSetType[CrashHandlerType] = OrderedSet()
 
         # Call on sys.exit and manual raise of SystemExit
-        self.quit_handlers: OrderedSet[QuitHandlerType] = OrderedSet()  # type: ignore
+        self.quit_handlers: OrderedSetType[QuitHandlerType] = OrderedSet()  # type: ignore
 
         # Always called
-        self.always_handlers: OrderedSet[AlwaysHandlerType] = OrderedSet()  # type: ignore
+        self.always_handlers: OrderedSetType[AlwaysHandlerType] = OrderedSet()  # type: ignore
 
         # Called when the user chose to abort the exit
-        self.hold_handlers: OrderedSet[HoldHandlerType] = OrderedSet()  # type: ignore
+        self.hold_handlers: OrderedSetType[HoldHandlerType] = OrderedSet()  # type: ignore
 
         # A set of already called handlers to avoid
         # duplicate calls
@@ -259,7 +261,7 @@ class PubSub:
 
     @property
     def started(self) -> bool:
-        """ Make the public property read only """
+        """ Has start() been called already? Read only """
         return self._started
 
     def on_terminate(self, func=None):
@@ -285,13 +287,7 @@ class PubSub:
     def start(self):
 
         if self.started:
-            self.stop()
-            raise RuntimeError(
-                "Event handlers are already registered, call stop() before "
-                "calling start() again. Remember start() is automatically "
-                "called if you used the PubSub() as a context manager "
-                "or a decorator."
-            )
+            return
 
         self.reset()
 
@@ -304,17 +300,18 @@ class PubSub:
             self._call_terminate_handlers, PROCESS_TERMINATING_SIGNAL
         )
 
-        atexit.register(self._call_finish_handlers)
+        atexit.register(self._finish)
 
         self._started = True
 
     def stop(self):
 
+        if not self.started:
+            return
+
         restore_previous_exception_handler()
         restore_previous_signals_handlers(PROCESS_TERMINATING_SIGNAL)
-
-        atexit.unregister(self._call_finish_handlers)
-
+        atexit.unregister(self._finish)
         self._started = False
 
     def reset(self):
@@ -324,36 +321,24 @@ class PubSub:
     def force_exit(exit_code) -> NoReturn:
         raise PubSubExit(exit_code)
 
-    def _finish(self, context):
-        self._call_finish_handlers(context)
-        self._call_always_handlers(context)
+    def _finish(self, context: EventContextType = None):
+        self._call_handlers(self.finish_handlers, context or {})
+        self._call_handlers(self.always_handlers, context or {})
 
-    def _hold(self, context):
-        self._call_hold_handlers(context)
-        self._call_always_handlers(context)
+    def _hold(self, context: EventContextType = None):
+        self._call_handlers(self.hold_handlers, context or {})
+        self._call_handlers(self.always_handlers, context or {})
         self.reset()
 
-    def _call_handler(
+    def _call_handlers(
         self,
-        handler: Callable[[EventContextTypeVar], None],
+        handlers: OrderedSetType[Callable[[EventContextTypeVar], None]],
         context: EventContextTypeVar,
     ):
-        if handler not in self._called_handlers:
-            self._called_handlers.add(handler)
-            return handler(context)
-        return None
-
-    def _call_finish_handlers(self, context: EventContextType = None):
-        for handler in self.finish_handlers:
-            self._call_handler(handler, context or {})
-
-    def _call_always_handlers(self, context: EventContextType = None):
-        for handler in self.always_handlers:
-            self._call_handler(handler, context or {})
-
-    def _call_hold_handlers(self, context: EventContextType = None):
-        for handler in self.hold_handlers:
-            self._call_handler(handler, context or {})
+        for handler in handlers:
+            if handler not in self._called_handlers:
+                self._called_handlers.add(handler)
+                handler(context)
 
     def _call_crash_handlers(
         self,
@@ -369,9 +354,7 @@ class PubSub:
             "previous_exception_handler": previous_handler,
         }
 
-        for handler in self.crash_handlers:
-            self._call_handler(handler, context)
-
+        self._call_handlers(self.crash_handlers, context)
         self._finish(context)
 
     def _call_terminate_handlers(
@@ -389,8 +372,7 @@ class PubSub:
         # TODO: check that a custom exit will trigger finish anyway
 
         try:
-            for handler in self.terminate_handlers:
-                self._call_handler(handler, context)
+            self._call_handlers(self.terminate_handlers, context)
         except PubSubExit:
             self._finish(context)
             raise
@@ -412,8 +394,7 @@ class PubSub:
         }
 
         try:
-            for handler in self.quit_handlers:
-                self._call_handler(handler, context)
+            self._call_handlers(self.quit_handlers, context)
         except PubSubExit:
             self._finish(context)
             raise
