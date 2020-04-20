@@ -5,22 +5,22 @@ Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and
 
 ::
 
-    from postscriptum import EventWatcher
-    watch = EventWatcher() # do this before creating a thread or a process
+    from postscriptum import PubSub
+    ps = PubSub() # do this before creating a thread or a process
 
-    @watch.on_finish() # don't forget the parenthesis !
+    @ps.on_finish() # don't forget the parenthesis !
     def _(context):
         print("When the program finishes, no matter the reason.")
 
-    @watch.on_terminate()
+    @ps.on_terminate()
     def _(context):  # context contains the signal that lead to termination
         print("When the user terminates the program. E.G: Ctrl + C")
 
-    @watch.on_crash()
+    @ps.on_crash()
     def _(context): # context contains the exception and traceback
         print("When there is an unhandled exception")
 
-    watch.start()
+    ps.start()
 
 All those functions will be called automatically at the proper moment.
 The handler for ``on_finish`` will be called even if another handler
@@ -30,8 +30,8 @@ If the same function is used for several events:
 
 ::
 
-    @watch.on_finish()
-    @watch.on_terminate()
+    @ps.on_finish()
+    @ps.on_terminate()
     def t(context):
         print('woot!')
 
@@ -41,32 +41,32 @@ If several functions are used as handlers for the same event:
 
 ::
 
-    @watch.on_terminate()
+    @ps.on_terminate()
     def _(context):
         print('one!')
 
-    @watch.on_terminate()
+    @ps.on_terminate()
     def _(context):
         print('two!')
 
 The two functions will be called. Hooks from code not using postscriptum will
 be preserved by default for exceptions and atexit.  Hooks from code not using
 postscriptum for signals are replaced. They can be restored
-using watch.restore_handlers().
+using ps.restore_handlers().
 
 You can also react to ``sys.exit()`` and manual raise of ``SystemExit``:
 
 ::
 
-    @watch.on_quit()
+    @ps.on_quit()
     def _(context):  # context contains the exit code
         print('Why me ?')
 
-BUT for this you MUST use the watcher as a decorator:
+BUT for this you MUST use the PubSub object as a decorator:
 
 ::
 
-    @watch()
+    @ps()
     def do_stuff():
         ...
 
@@ -76,10 +76,10 @@ Or as a context manager:
 
 ::
 
-    with watch():
+    with ps():
         do_stuff()
 
-In that case, don't call ``watch.start()``, it is done for you.
+In that case, don't call ``ps.start()``, it is done for you.
 
 
 All decorators are stackable. If you use other decorators than the ones
@@ -87,7 +87,7 @@ from postcriptum, put postcriptum decorators at the top:
 
 ::
 
-    @watch.on_quit()
+    @ps.on_quit()
     @other_decorator()
     def handler(context):
         pass
@@ -100,7 +100,7 @@ Alternatively, you can add the handler imperatively:
     def handler(context):
         pass
 
-``watch.add_quit_handler(handler)``. All ``on_*`` method have their
+``ps.add_quit_handler(handler)``. All ``on_*`` method have their
 imperative equivalent.
 
 The context is a dictionary that can contain:
@@ -185,11 +185,14 @@ from postscriptum.signals import (
     register_signals_handler,
     restore_previous_signals_handlers,
 )
-from postscriptum.exceptions import PostScriptumExit
+from postscriptum.exceptions import PubSubExit
 from postscriptum.utils import create_handler_decorator
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
+# TODO: finish end 2 end tests
+# TODO: test hold
+# TODO: test alaways
 # TODO: change context to be classes
 # TODO: loop.add_signal_handler for asyncio, see: https://gist.github.com/nvgoldin/30cea3c04ee0796ebd0489aa62bcf00a
 # TODO: check if main thread
@@ -209,7 +212,7 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 # TODO: write docstrings
 
 
-class EventWatcher:
+class PubSub:
     """
         A registry containing/attaching handlers to the various exit scenarios
 
@@ -226,27 +229,30 @@ class EventWatcher:
         self.exit_after_terminate_handlers = exit_after_terminate_handlers
         self.call_previous_exception_handlers = call_previous_exception_handler
 
+        # ignoring type is here necessary because of a bug in mypy:
+        # https://github.com/python/mypy/issues/3283
+
         # Called when terminate, crash or quit results in an exit
-        self.finish_handlers: OrderedSet[FinishHandlerType] = OrderedSet()
+        self.finish_handlers: OrderedSet[FinishHandlerType] = OrderedSet()  # type: ignore
 
         # Called on SIGINT (so Ctrl + C), SIGTERM, SIGQUIT and SIGBREAK
-        self.terminate_handlers: OrderedSet[TerminateHandlerType] = OrderedSet()
+        self.terminate_handlers: OrderedSet[TerminateHandlerType] = OrderedSet()  # type: ignore
 
         # Call when there is an unhandled exception
         self.crash_handlers: OrderedSet[CrashHandlerType] = OrderedSet()
 
         # Call on sys.exit and manual raise of SystemExit
-        self.quit_handlers: OrderedSet[QuitHandlerType] = OrderedSet()
+        self.quit_handlers: OrderedSet[QuitHandlerType] = OrderedSet()  # type: ignore
 
         # Always called
-        self.always_handlers: OrderedSet[AlwaysHandlerType] = OrderedSet()
+        self.always_handlers: OrderedSet[AlwaysHandlerType] = OrderedSet()  # type: ignore
 
         # Called when the user chose to abort the exit
-        self.hold_handlers: OrderedSet[HoldHandlerType] = OrderedSet()
+        self.hold_handlers: OrderedSet[HoldHandlerType] = OrderedSet()  # type: ignore
 
         # A set of already called handlers to avoid
         # duplicate calls
-        self._called_handlers: Set[EventHandlerType] = set()
+        self._called_handlers: Set[EventHandlerType] = set()  # type: ignore
 
         # We use this to avoid registering handlers twice
         self._started = False
@@ -283,7 +289,7 @@ class EventWatcher:
             raise RuntimeError(
                 "Event handlers are already registered, call stop() before "
                 "calling start() again. Remember start() is automatically "
-                "called if you used the EventWatcher() as a context manager "
+                "called if you used the PubSub() as a context manager "
                 "or a decorator."
             )
 
@@ -314,8 +320,9 @@ class EventWatcher:
     def reset(self):
         self._called_handlers = set()
 
-    def force_exit(self, exit_code) -> NoReturn:
-        raise PostScriptumExit(exit_code)
+    @staticmethod
+    def force_exit(exit_code) -> NoReturn:
+        raise PubSubExit(exit_code)
 
     def _finish(self, context):
         self._call_finish_handlers(context)
@@ -384,7 +391,7 @@ class EventWatcher:
         try:
             for handler in self.terminate_handlers:
                 self._call_handler(handler, context)
-        except PostScriptumExit:
+        except PubSubExit:
             self._finish(context)
             raise
 
@@ -407,7 +414,7 @@ class EventWatcher:
         try:
             for handler in self.quit_handlers:
                 self._call_handler(handler, context)
-        except PostScriptumExit:
+        except PubSubExit:
             self._finish(context)
             raise
 

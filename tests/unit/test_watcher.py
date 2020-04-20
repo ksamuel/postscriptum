@@ -6,61 +6,61 @@ from unittest.mock import patch, Mock, call
 
 import pytest
 
-from postscriptum.watcher import EventWatcher, PROCESS_TERMINATING_SIGNAL
+from postscriptum.pubsub import PubSub, PROCESS_TERMINATING_SIGNAL
 from postscriptum.signals import signals_from_names, SIGNAL_HANDLERS_HISTORY
 from postscriptum.excepthook import EXCEPTION_HANDLERS_HISTORY
-from postscriptum.exceptions import PostScriptumExit
+from postscriptum.exceptions import PubSubExit
 
 
 def test_watcher_context_decorator():
 
-    watch = EventWatcher()
-    context_decorator = watch()
+    ps = PubSub()
+    context_decorator = ps()
 
-    assert context_decorator.on_enter == watch.start
-    assert context_decorator.on_system_exit == watch._call_quit_handlers
+    assert context_decorator.on_enter == ps.start
+    assert context_decorator.on_system_exit == ps._call_quit_handlers
 
     with pytest.raises(RuntimeError):
-        watch.start()
-        assert watch.started
-        watch.start()
+        ps.start()
+        assert ps.started
+        ps.start()
 
-    assert not watch.started
+    assert not ps.started
 
 
 def test_finish_handler():
 
     finish_handler = Mock()
-    watch = EventWatcher()
-    watch.finish_handlers.add(finish_handler)
+    ps = PubSub()
+    ps.finish_handlers.add(finish_handler)
 
     with patch("atexit.register") as mock:
-        watch.start()
+        ps.start()
 
-    mock.assert_called_once_with(watch._call_finish_handlers)
+    mock.assert_called_once_with(ps._call_finish_handlers)
 
     with patch("atexit.unregister") as mock:
-        watch.stop()
+        ps.stop()
 
-    mock.assert_called_once_with(watch._call_finish_handlers)
+    mock.assert_called_once_with(ps._call_finish_handlers)
 
-    watch._call_finish_handlers()
+    ps._call_finish_handlers()
 
     finish_handler.assert_called_once()
 
-    watch = EventWatcher()
+    ps = PubSub()
 
     with pytest.raises(AssertionError):
 
-        @watch.on_finish
+        @ps.on_finish
         def _():
             pass
 
-    @watch.on_finish()
+    @ps.on_finish()
     def _():
         pass
 
-    assert set(watch.finish_handlers) == {
+    assert set(ps.finish_handlers) == {
         _
     }, "on_finish() should add the function as a handler"
 
@@ -71,13 +71,13 @@ def test_crash_handler():
     fake_traceback = traceback.format_list([("foo.py", 3, "<module>", "foo.bar()")])
     crash_handler = Mock()
 
-    watch = EventWatcher()
-    watch.crash_handlers.add(crash_handler)
+    ps = PubSub()
+    ps.crash_handlers.add(crash_handler)
 
-    with watch():
+    with ps():
 
         assert (
-            sys.excepthook.__wrapped__ == watch._call_crash_handlers
+            sys.excepthook.__wrapped__ == ps._call_crash_handlers
         ), "Start set the excepthook"
 
         sys.excepthook(Exception, fake_exception, fake_traceback)
@@ -91,22 +91,22 @@ def test_crash_handler():
             }
         )
 
-    watch.stop()
+    ps.stop()
     assert sys.excepthook == sys.__excepthook__, "Stop reset the except hook"
 
-    watch = EventWatcher()
+    ps = PubSub()
 
     with pytest.raises(AssertionError):
 
-        @watch.on_crash
+        @ps.on_crash
         def _():
             pass
 
-    @watch.on_crash()
+    @ps.on_crash()
     def _():
         pass
 
-    assert set(watch.crash_handlers) == {
+    assert set(ps.crash_handlers) == {
         _
     }, "on_crash() should add the function as a handler"
 
@@ -115,24 +115,24 @@ def test_terminate_handler(subtests):
 
     signal_handler = Mock()
     fake_frame = Mock()
-    watch = EventWatcher()
-    watch.terminate_handlers.add(signal_handler)
+    ps = PubSub()
+    ps.terminate_handlers.add(signal_handler)
 
-    with watch():
+    with ps():
 
         previous_signals = {}
         for sig in signals_from_names(PROCESS_TERMINATING_SIGNAL):
 
             with subtests.test(msg="Test each signal handler", signal=sig):
 
-                watch.reset()
+                ps.reset()
 
                 handler = signal.getsignal(sig)
                 assert (
-                    signal.getsignal(sig).__wrapped__ == watch._call_terminate_handlers
-                ), "Watcher signal handler should the handler for this signal"
+                    signal.getsignal(sig).__wrapped__ == ps._call_terminate_handlers
+                ), "The PubSub signal handler should the handler for this signal"
 
-                with pytest.raises(PostScriptumExit):
+                with pytest.raises(PubSubExit):
                     handler(sig, fake_frame)
 
                 signal_handler._called_handlers = set()
@@ -147,7 +147,7 @@ def test_terminate_handler(subtests):
                     }
                 ), "Our handler should be called with the signal context"
 
-    watch.stop()
+    ps.stop()
 
     for sig in signals_from_names(PROCESS_TERMINATING_SIGNAL):
         with subtests.test(msg="Check that each handler is reset", signal=sig):
@@ -155,28 +155,28 @@ def test_terminate_handler(subtests):
                 sig
             ), "Signal should be restored to its previous value"
 
-    watch = EventWatcher(exit_after_terminate_handlers=False)
+    ps = PubSub(exit_after_terminate_handlers=False)
 
-    with watch():
+    with ps():
 
         for sig in signals_from_names(PROCESS_TERMINATING_SIGNAL):
             with subtests.test(msg="Test each signal handler without exit", signal=sig):
                 handler = signal.getsignal(sig)
                 handler(sig, fake_frame)
 
-    watch = EventWatcher()
+    ps = PubSub()
 
     with pytest.raises(AssertionError):
 
-        @watch.on_terminate
+        @ps.on_terminate
         def _():
             pass
 
-    @watch.on_terminate()
+    @ps.on_terminate()
     def _():
         pass
 
-    assert set(watch.terminate_handlers) == {
+    assert set(ps.terminate_handlers) == {
         _
     }, "on_terminate() should add the function as a handler"
 
@@ -184,32 +184,32 @@ def test_terminate_handler(subtests):
 def test_quit_handler():
 
     quit_handler = Mock()
-    watch = EventWatcher()
-    watch.quit_handlers.add(quit_handler)
+    ps = PubSub()
+    ps.quit_handlers.add(quit_handler)
 
     with pytest.raises(SystemExit):
-        with watch():
+        with ps():
             raise SystemExit(1)
 
     assert quit_handler.call_args == call(
         {"exit_code": 1, "exit": quit_handler.call_args[0][0]["exit"]}
     ), "Handler should be called for SystemExit"
 
-    watch = EventWatcher()
+    ps = PubSub()
 
     with pytest.raises(AssertionError):
 
-        @watch.on_quit
+        @ps.on_quit
         def _(context):
             pass
 
-    watch = EventWatcher(exit_after_quit_handlers=False)
+    ps = PubSub(exit_after_quit_handlers=False)
 
-    @watch.on_quit()
+    @ps.on_quit()
     def _(context):
         quit_handler(context)
 
-    with watch():
+    with ps():
         raise sys.exit(2)
 
     assert quit_handler.call_args == call(
@@ -223,11 +223,11 @@ def test_handlers_are_not_called_twice():
     fake_traceback = traceback.format_list([("foo.py", 3, "<module>", "foo.bar()")])
     handler = Mock()
 
-    watch = EventWatcher()
-    watch.finish_handlers.add(handler)
-    watch.crash_handlers.add(handler)
+    ps = PubSub()
+    ps.finish_handlers.add(handler)
+    ps.crash_handlers.add(handler)
 
-    with watch():
+    with ps():
         sys.excepthook(Exception, fake_exception, fake_traceback)
         handler.assert_called_once_with(
             {

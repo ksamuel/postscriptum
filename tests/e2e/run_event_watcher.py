@@ -1,32 +1,33 @@
+
 import sys
 import time
 
-from postscriptum import EventWatcher
+from postscriptum import PubSub
 
-watch = EventWatcher()
+ps = PubSub()
 
 
-@watch.on_terminate()
+@ps.on_terminate()
 def _(context):  # type: ignore
     print("terminated")
 
 
-@watch.on_crash()
-def _(context):  # type: ignore
+@ps.on_crash() # type: ignore
+def _(context):
     print("crashed")
 
 
-@watch.on_quit()
-def _(context):  # type: ignore
+@ps.on_quit() # type: ignore
+def _(context):
     print("quitted")
 
 
-@watch.on_finish()
-def _(context):  # type: ignore
+@ps.on_finish() # type: ignore
+def _(context):
     print("finished")
 
 
-watch.start()
+ps.start()
 
 action = (sys.argv[1:] + ["finish"])[0]
 if action == "quit":

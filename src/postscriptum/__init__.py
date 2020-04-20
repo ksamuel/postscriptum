@@ -8,4 +8,4 @@ from postscriptum.__about__ import (
     __license__,
     __copyright__,
 )
-from postscriptum.watcher import EventWatcher
+from postscriptum.pubsub import PubSub

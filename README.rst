@@ -9,22 +9,22 @@ Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and ``signal.signal``
 
 ::
 
-    from postscriptum import EventWatcher
-    watch = EventWatcher() # do this before creating a thread or a process
+    from postscriptum import PubSub
+    ps = PubSub() # do this before creating a thread or a process
 
-    @watch.on_finish() # don't forget the parenthesis !
+    @ps.on_finish() # don't forget the parenthesis !
     def _(context):
         print("When the program finishes, no matter the reason.")
 
-    @watch.on_terminate()
+    @ps.on_terminate()
     def _(context):  # context contains the signal that lead to termination
         print("When the user terminates the program. E.G: Ctrl + C, kill -9, etc.")
 
-    @watch.on_crash()
+    @ps.on_crash()
     def _(context): # context contains the exception and traceback
         print("When there is an unhandled exception")
 
-    watch.start()
+    ps.start()
 
 All those functions will be called automatically at the proper moment. The handler for ``on_finish`` will be called even if another handler has been called.
 

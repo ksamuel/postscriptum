@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from postscriptum.system_exit import catch_system_exit
-from postscriptum.exceptions import PostScriptumExit
+from postscriptum.exceptions import PubSubExit
 
 
 def catcher(exception_type, exception_value, traceback):
@@ -56,7 +56,7 @@ def test_context_manager():
     with catch_system_exit(on_system_exit, on_enter, on_exit, raise_again=False):
         raise sys.exit(0)
 
-    with pytest.raises(PostScriptumExit):
+    with pytest.raises(PubSubExit):
 
         with catch_system_exit(on_system_exit, on_enter, on_exit):
-            raise PostScriptumExit(0)
+            raise PubSubExit(0)
