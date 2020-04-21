@@ -188,7 +188,10 @@ from postscriptum.utils import create_handler_decorator, force_exit, format_stac
 
 PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 
-# TODO: check finish and hold are called correctly
+# TODO: test examples
+# TODO: test overriding setup/teardown method with noop
+# TODO: test normal finish
+# TODO: give a type to events
 # TODO: finish end 2 end tests
 # TODO: test hold
 # TODO: test alaways
@@ -197,13 +200,10 @@ PROCESS_TERMINATING_SIGNAL = ("SIGINT", "SIGQUIT", "SIGTERM", "SIGBREAK")
 # TODO: check if main thread
 # TODO: test if one can call sys.exit() in a terminate handler
 # TODO: test if on can reraise from a quit handler
-# TODO: check if one can avoid exciting from an exception handler and then exit manually
 # TODO: test with several handlers
-# TODO: test if event is passed to finish
 # TODO: improve error messages
 # TODO: e2e on decorators
 # TODO: test on azur cloud
-# TODO: create an "examples" directory
 # TODO: unraisable hook: https://docs.python.org/3/library/sys.html#sys.unraisablehook
 # TODO: threading excepthook: threading.excepthook()
 # TODO: default for unhandled error in asyncio
@@ -271,32 +271,53 @@ class PubSub:
     def always(self, func=None):
         return create_handler_decorator(func, self.always_handlers.add, "always")
 
-    def start(self):
-
-        if self.started:
-            return
-
-        self._called_handlers.clear()
-
+    def setup_exception_handler(self):
         register_exception_handler(
             self._handle_crash,
             call_previous_handler=self.call_previous_exception_handlers,
         )
+
+    def teardown_exception_handler(self):
+        restore_previous_exception_handler()
+
+    def setup_signal_handler(self):
         register_signals_handler(self._handle_terminate, PROCESS_TERMINATING_SIGNAL)
+
+    def teardown_signal_handler(self):
+        restore_previous_signals_handlers(PROCESS_TERMINATING_SIGNAL)
+
+    def setup_atexit_handler(self):
         atexit.register(self._handle_finish)
+
+    def teardown_atexit_handler(self):
+        atexit.unregister(self._handle_finish)
+
+    def start(self) -> bool:
+
+        if self.started:
+            return False
+
+        self._called_handlers.clear()
+        self.setup_exception_handler()
+        self.setup_signal_handler()
+        self.setup_atexit_handler()
 
         self._started = True
 
-    def stop(self):
+        return True
+
+    def stop(self) -> bool:
 
         if not self.started:
-            return
+            return False
 
-        restore_previous_exception_handler()
-        restore_previous_signals_handlers(PROCESS_TERMINATING_SIGNAL)
-        atexit.unregister(self._handle_finish)
+        self.teardown_exception_handler()
+        self.teardown_signal_handler()
+        self.teardown_atexit_handler()
 
         self._started = False
+
+        return True
 
     def _call_handlers(
         self,
@@ -319,8 +340,8 @@ class PubSub:
 
     def _handle_crash(
         self,
-        type_: Type[Exception],
-        exception: Exception,
+        type_: Type[BaseException],
+        exception: BaseException,
         traceback: TracebackType,
         previous_handler: ExceptionHandlerType,
     ):
@@ -350,25 +371,23 @@ class PubSub:
 
         # We need to temporarly restore original signal handlers so that
         # Ctrl + C works in an input() call inside a handler
-        restore_previous_signals_handlers(PROCESS_TERMINATING_SIGNAL)
-        registered_signals = None
+        self.teardown_signal_handler()
+        registered_signals = False
 
         # In the simplest scenario, we can just call the handlers and
         # hook into signals again...
         try:
             self._call_handlers(self.terminate_handlers, event)
-            registered_signals = register_signals_handler(
-                self._handle_terminate, PROCESS_TERMINATING_SIGNAL
-            )
+            self.setup_signal_handler()
+            registered_signals = True
 
         # But the DEV user may manually exit from inside his own handlers.
         # This should result in a definitive exit, so we call related handler
         # for THAT. Also, since they could receive a signal, we need
         # to hook into signals again.
         except PubSubExit:
-            registered_signals = register_signals_handler(
-                self._handle_terminate, PROCESS_TERMINATING_SIGNAL
-            )
+            self.setup_signal_handler()
+            registered_signals = True
             self._handle_finish(event)
             raise
 
@@ -381,9 +400,8 @@ class PubSub:
         # and clear the _called_handlers to allow exceptionnally calling
         # a handler twice.
         except KeyboardInterrupt:
-            registered_signals = register_signals_handler(
-                self._handle_terminate, PROCESS_TERMINATING_SIGNAL
-            )
+            self.setup_signal_handler()
+            registered_signals = True
             self._called_handlers.clear()
             self._handle_terminate(sig, frame, previous_handler)
 
@@ -391,9 +409,7 @@ class PubSub:
         # to be sure we are hooks into signals again, but not do it twice
         finally:
             if not registered_signals:
-                register_signals_handler(
-                    self._handle_terminate, PROCESS_TERMINATING_SIGNAL
-                )
+                self.setup_signal_handler()
 
         # If were are here, no handler manually exited, and edge cases
         # are handled, so we can proceed normally

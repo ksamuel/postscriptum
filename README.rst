@@ -17,11 +17,11 @@ Postscriptum wraps ``atexit.register``, ``sys.excepthook`` and ``signal.signal``
         print("When the program finishes, no matter the reason.")
 
     @ps.on_terminate()
-    def _(event):  # context contains the signal that lead to termination
+    def _(event):  # event contains the signal that lead to termination
         print("When the user terminates the program. E.G: Ctrl + C, kill -9, etc.")
 
     @ps.on_crash()
-    def _(event): # context contains the exception and traceback
+    def _(event): # event contains the exception and traceback
         print("When there is an unhandled exception")
 
     ps.start()

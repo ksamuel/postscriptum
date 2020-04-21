@@ -43,8 +43,10 @@ TerminateEventType = TypedDict(
 CrashEventType = TypedDict(
     "CrashEventType",
     {
-        "exception": Exception,
-        "stacktrace": Callable[[Type[Exception], Exception, TracebackType], str],
+        "exception": BaseException,
+        "stacktrace": Callable[
+            [Type[BaseException], BaseException, TracebackType], str
+        ],
         "traceback": TracebackType,
         "previous_exception_handler": ExceptionHandlerType,
     },
